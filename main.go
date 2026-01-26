@@ -2,6 +2,7 @@ package main
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"github.com/joho/godotenv"
 	"io"
@@ -9,8 +10,10 @@ import (
 	"log/slog"
 	_ "modernc.org/sqlite"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 type Config struct {
@@ -19,30 +22,43 @@ type Config struct {
 	AppURL       string
 }
 
+type StravaAuth struct {
+	ExpiresAt    string `json:"expires_at"`
+	RefreshToken string `json:"refresh_token"`
+	AccessToken  string `json:"access_token"`
+	Athlete      struct {
+		ID         int64  `json:"id"`
+		ProfileImg string `json:"profile"`
+	} `json:"athlete"`
+}
+
+func (s *StravaAuth) IsValid() bool {
+	return s.AccessToken != "" && s.Athlete.ID != 0
+}
+
 var cfg *Config
 var db *sql.DB
 
 func initDB() {
-	// Using SQLite because it's simple and likely this app will have a total of 
-	// 1 user. I learned that because SQLite is just a file the you need to 
-	// use jounal_mode(WAL) which just makes it so you can read from the DB while 
-	// writing and then use the busy_timeout(5000) which effetively is a timeout 
+	// Using SQLite because it's simple and likely this app will have a total of
+	// 1 user. I learned that because SQLite is just a file the you need to
+	// use jounal_mode(WAL) which just makes it so you can read from the DB while
+	// writing and then use the busy_timeout(5000) which effetively is a timeout
 	// and retry
-    db, err := sql.Open("sqlite", "strava_app.db?_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)")
-    if err != nil {
-        slog.Error("Failed to connect to SQLite", "error", err)
-        os.Exit(1)
-    }
-    db.SetMaxOpenConns(1)
+	db, err := sql.Open("sqlite", "strava_app.db?_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)")
+	if err != nil {
+		slog.Error("Failed to connect to SQLite", "error", err)
+		os.Exit(1)
+	}
+	db.SetMaxOpenConns(1)
 
-    if err := db.Ping(); err != nil {
-        slog.Error("Database ping failed", "error", err)
-        os.Exit(1)
-    }
+	if err := db.Ping(); err != nil {
+		slog.Error("Database ping failed", "error", err)
+		os.Exit(1)
+	}
 
-    slog.Info("SQLite initialized with WAL mode and Busy Timeout")
+	slog.Info("SQLite initialized with WAL mode and Busy Timeout")
 }
-
 
 func initLogger() *os.File {
 	logDir := "logs"
@@ -96,10 +112,10 @@ func createTables() {
 	}
 }
 
-func saveUser(stravaID string, token string) error {
-    query := `INSERT INTO users (strava_id, access_token) VALUES (?, ?)`
-    _, err := db.Exec(query, stravaID, token)
-    return err
+func saveUser(auth StravaAuth) error {
+	query := `INSERT INTO users (strava_id, access_token, refresh_token, expires_at) VALUES (?, ?, ?, ?)`
+	_, err := db.Exec(query, auth.Athlete.ID, auth.AccessToken,auth.RefreshToken, auth.ExpiresAt)
+	return err
 }
 
 func makeRequest(req *http.Request) (string, error) {
@@ -119,39 +135,58 @@ func makeRequest(req *http.Request) (string, error) {
 
 func goLogin(w http.ResponseWriter, req *http.Request) {
 	redirectURL := fmt.Sprintf("%s/exchange_token", cfg.AppURL)
-	strava_oauth_url := fmt.Sprintf("http://www.strava.com/oauth/authorize?client_id=%s&response_type=code&redirect_uri=%s&approval_prompt=force&scope=read",
-		cfg.StravaID,
-		redirectURL)
 
-	http.Redirect(w, req, strava_oauth_url, http.StatusFound)
+	base, _ := url.Parse("https://www.strava.com/api/v3/oauth/authorize")
+	params := url.Values{}
+	params.Set("client_id", cfg.StravaID)
+	params.Set("response_type", "code")
+	params.Set("redirect_uri", redirectURL)
+	params.Set("approval_prompt", "force")
+	params.Set("scope", "read")
+	params.Add("scope", "read,activity:read_all")
+
+	base.RawQuery = params.Encode()
+
+	http.Redirect(w, req, base.String(), http.StatusFound)
 }
 
-func exchangeToken(w http.ResponseWriter, req *http.Request) {
+func exchangeToken(w http.ResponseWriter, ogReq *http.Request) {
 	// TODO : save credentials. We'll need to place some sort of auth token on the user's machine
 	// store the auth token and refresh tokens some how (valkey?)
 	//
-	code := req.URL.Query().Get("code")
+	code := ogReq.URL.Query().Get("code")
+	endpoint := "https://www.strava.com/api/v3/oauth/token"
 
-	staravaExchangeURL := fmt.Sprintf("http://www.strava.com/api/v3/oauth/token?client_id=%s&client_secret=%s&code=%s&grant_type=%s",
-		cfg.StravaID,
-		cfg.StravaSecret,
-		code,
-	)
-	req, err := http.NewRequest("POST",
-		staravaExchangeURL,
-		nil)
+	data := url.Values{}
+	data.Set("client_id", cfg.StravaID)
+	data.Set("client_secret", cfg.StravaSecret)
+	data.Set("code", code)
+	data.Set("grant_type", "authorization_code")
+
+	stavaReq, err := http.NewRequest("POST", endpoint, strings.NewReader(data.Encode()))
 	if err != nil {
-		panic(err)
+		slog.Error("Failed to create request", "error", err)
+		return
 	}
 
-	fmt.Println(req)
-	body, err := makeRequest(req)
+	stavaReq.Header.Add("Content-Type", "application/x-www-form-urlencoded")
+
+	body, err := makeRequest(stavaReq)
 	if err != nil {
-		slog.Error("Strava API call failed", "details", err)
-		http.Error(w, "Failed to contact Strava", http.StatusBadGateway)
+		slog.Error("Token exchange failed", "error", err)
+		return
 	}
 
-	fmt.Println(body)
+	var auth StravaAuth
+	if err := json.Unmarshal([]byte(body), &auth); err != nil {
+		slog.Error("Failed to parse JSON", "error", err)
+		http.Error(w, "Invalid response from Strava", http.StatusInternalServerError)
+		return
+	}
+
+	slog.Info("Athlete authenticated", "id", auth.Athlete.ID)
+	
+	saveUser(StravaAuth)
 
 	// APP_URL := os.Getenv("APP_URL")
 	// redirectURL := fmt.Sprintf("%s/user_dashboard", APP_URL)
@@ -168,6 +203,7 @@ func userDashboard(w http.ResponseWriter, req *http.Request) {
 
 func stravaRefreshToken(refreshToken string) (string, error) {
 	// TODO: rewrite to check if token is expired and then run refresh
+	// will need to check auth then pull user and if no user send to login
 	accessToken := ""
 
 	stravaExchangeToken := fmt.Sprintf("http://www.strava.com/api/v3/oauth/token?client_id=%s&client_secret=%s&grant_type=refresh_token&refresh_token=%s",
