@@ -1,1 +1,6 @@
 .env
+
+logs
+tmp
+
+strava_app.db
