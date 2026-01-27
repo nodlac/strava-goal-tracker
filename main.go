@@ -23,7 +23,7 @@ type Config struct {
 }
 
 type StravaAuth struct {
-	ExpiresAt    string `json:"expires_at"`
+	ExpiresAt    int64 `json:"expires_at"`
 	RefreshToken string `json:"refresh_token"`
 	AccessToken  string `json:"access_token"`
 	Athlete      struct {
@@ -45,7 +45,8 @@ func initDB() {
 	// use jounal_mode(WAL) which just makes it so you can read from the DB while
 	// writing and then use the busy_timeout(5000) which effetively is a timeout
 	// and retry
-	db, err := sql.Open("sqlite", "strava_app.db?_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)")
+	var err error
+	db, err = sql.Open("sqlite", "strava_app.db?_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)")
 	if err != nil {
 		slog.Error("Failed to connect to SQLite", "error", err)
 		os.Exit(1)
@@ -103,6 +104,7 @@ func createTables() {
 		access_token TEXT,
 		refresh_token TEXT,
 		expires_at INTEGER
+		profile_img TEXT
 	);`
 
 	_, err := db.Exec(query)
@@ -113,8 +115,8 @@ func createTables() {
 }
 
 func saveUser(auth StravaAuth) error {
-	query := `INSERT INTO users (strava_id, access_token, refresh_token, expires_at) VALUES (?, ?, ?, ?)`
-	_, err := db.Exec(query, auth.Athlete.ID, auth.AccessToken,auth.RefreshToken, auth.ExpiresAt)
+	query := `INSERT INTO users (strava_id, access_token, refresh_token, expires_at, profile_img) VALUES (?, ?, ?, ?, ?)`
+	_, err := db.Exec(query, auth.Athlete.ID, auth.AccessToken,auth.RefreshToken, auth.ExpiresAt, auth.Athlete.ProfileImg)
 	return err
 }
 
@@ -184,9 +186,20 @@ func exchangeToken(w http.ResponseWriter, ogReq *http.Request) {
 		return
 	}
 
+	if !auth.IsValid() {
+		// TODO:create error message/page
+		slog.Error("Athlete information is invalid", "error", auth.Athlete.ID)
+		return
+	}
 	slog.Info("Athlete authenticated", "id", auth.Athlete.ID)
+	slog.Info("Athlete schema", "athlete", auth)
 	
-	saveUser(StravaAuth)
+	err = saveUser(auth)
+	if err != nil {
+		slog.Error("failed to save user", "Error", err)
+		// TODO: send to erro page
+		return
+	}
 
 	// APP_URL := os.Getenv("APP_URL")
 	// redirectURL := fmt.Sprintf("%s/user_dashboard", APP_URL)
@@ -225,7 +238,7 @@ func stravaRefreshToken(refreshToken string) (string, error) {
 		return "", err
 	}
 
-	fmt.Println(string(body))
+	slog.Info("Exchange body", "exchange", body)
 
 	return accessToken, nil
 }
@@ -257,6 +270,7 @@ func main() {
 	LoadConfig()
 	initDB()
 	defer db.Close()
+	createTables()
 
 	http.HandleFunc("/login", goLogin)
 
