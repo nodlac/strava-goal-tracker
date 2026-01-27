@@ -4,6 +4,9 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"github.com/alexedwards/scs/redisstore"
+	"github.com/alexedwards/scs/v2"
+	"github.com/gomodule/redigo/redis"
 	"github.com/joho/godotenv"
 	"io"
 	"log"
@@ -16,6 +19,17 @@ import (
 	"strings"
 )
 
+
+pool := &redis.Pool{
+    MaxIdle: 10,
+    Dial: func() (redis.Conn, error) {
+        return redis.Dial("tcp", "localhost:6379")
+    },
+}
+sessionManager := scs.New()
+sessionManager.Store = redisstore.New(pool)
+sessionManager.Lifetime = 14 * 24 * time.Hour // 2 weeks   
+
 type Config struct {
 	StravaID     string
 	StravaSecret string
@@ -23,7 +37,7 @@ type Config struct {
 }
 
 type StravaAuth struct {
-	ExpiresAt    int64 `json:"expires_at"`
+	ExpiresAt    int64  `json:"expires_at"`
 	RefreshToken string `json:"refresh_token"`
 	AccessToken  string `json:"access_token"`
 	Athlete      struct {
@@ -116,8 +130,11 @@ func createTables() {
 
 func saveUser(auth StravaAuth) error {
 	query := `INSERT INTO users (strava_id, access_token, refresh_token, expires_at, profile_img) VALUES (?, ?, ?, ?, ?)`
-	_, err := db.Exec(query, auth.Athlete.ID, auth.AccessToken,auth.RefreshToken, auth.ExpiresAt, auth.Athlete.ProfileImg)
+	_, err := db.Exec(query, auth.Athlete.ID, auth.AccessToken, auth.RefreshToken, auth.ExpiresAt, auth.Athlete.ProfileImg)
 	return err
+}
+
+func createAuthToken() {
 }
 
 func makeRequest(req *http.Request) (string, error) {
@@ -157,7 +174,7 @@ func exchangeToken(w http.ResponseWriter, ogReq *http.Request) {
 	// store the auth token and refresh tokens some how (valkey?)
 	//
 	code := ogReq.URL.Query().Get("code")
-	slog.Info("code=",code)
+	slog.Info("code=", code)
 	endpoint := "https://www.strava.com/api/v3/oauth/token"
 
 	data := url.Values{}
@@ -194,22 +211,25 @@ func exchangeToken(w http.ResponseWriter, ogReq *http.Request) {
 	}
 	slog.Info("Athlete authenticated", "id", auth.Athlete.ID)
 	slog.Info("Athlete schema", "athlete", auth)
-	
+
 	err = saveUser(auth)
 	if err != nil {
 		slog.Error("failed to save user", "Error", err)
 		// TODO: send to error page also handle access denied case
 		return
 	}
-
-
+	sessionManager.Put(r.Context(), "user_id", auth.Athlete.ID)
 
 	// APP_URL := os.Getenv("APP_URL")
-	// redirectURL := fmt.Sprintf("%s/user_dashboard", APP_URL)
-	// http.Redirect(w, req, redirectURL, http.StatusFound)
+	http.Redirect(w, req, "/user-dashboard", http.StatusFound)
 }
 
 func userDashboard(w http.ResponseWriter, req *http.Request) {
+    userID := sessionManager.GetInt(r.Context(), "user_id", 0)
+    if userID == 0 {
+        http.Redirect(w, r, "/login", http.StatusFound)
+        return
+    }
 	// TODO:
 	// athleteData := stravaAPIFetch()
 	w.Header().Set("Content-Type", "text/html")
