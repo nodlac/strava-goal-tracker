@@ -103,7 +103,7 @@ func createTables() {
 		strava_id TEXT UNIQUE,
 		access_token TEXT,
 		refresh_token TEXT,
-		expires_at INTEGER
+		expires_at INTEGER,
 		profile_img TEXT
 	);`
 
@@ -157,6 +157,7 @@ func exchangeToken(w http.ResponseWriter, ogReq *http.Request) {
 	// store the auth token and refresh tokens some how (valkey?)
 	//
 	code := ogReq.URL.Query().Get("code")
+	slog.Info("code=",code)
 	endpoint := "https://www.strava.com/api/v3/oauth/token"
 
 	data := url.Values{}
@@ -197,9 +198,11 @@ func exchangeToken(w http.ResponseWriter, ogReq *http.Request) {
 	err = saveUser(auth)
 	if err != nil {
 		slog.Error("failed to save user", "Error", err)
-		// TODO: send to erro page
+		// TODO: send to error page also handle access denied case
 		return
 	}
+
+
 
 	// APP_URL := os.Getenv("APP_URL")
 	// redirectURL := fmt.Sprintf("%s/user_dashboard", APP_URL)
