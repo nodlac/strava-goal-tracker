@@ -148,7 +148,14 @@ func createTables() {
 }
 
 func saveUser(auth StravaAuth) error {
-	query := `INSERT INTO users (strava_id, access_token, refresh_token, expires_at, profile_img) VALUES (?, ?, ?, ?, ?)`
+	query := `
+    INSERT INTO users (strava_id, access_token, refresh_token, expires_at, profile_img) 
+    VALUES (?, ?, ?, ?, ?)
+    ON CONFLICT(strava_id) DO UPDATE SET
+        access_token = excluded.access_token,
+        refresh_token = excluded.refresh_token,
+        expires_at = excluded.expires_at,
+        profile_img = excluded.profile_img;`
 	_, err := db.Exec(query, auth.Athlete.ID, auth.AccessToken, auth.RefreshToken, auth.ExpiresAt, auth.Athlete.ProfileImg)
 	return err
 }
@@ -239,8 +246,9 @@ func exchangeToken(w http.ResponseWriter, ogReq *http.Request) {
 func requireLogin(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Check if the user_id key exists in the session
-		stravaID := sessionManager.GetString(r.Context(), "user_id")
-		if stravaID == "" {
+		stravaID := sessionManager.GetInt64(r.Context(), "user_id")
+		if stravaID == 0 {
+			slog.Warn("User Not Logged In")
 			http.Redirect(w, r, "/login", http.StatusSeeOther)
 			return
 		}
@@ -262,14 +270,21 @@ func requireLogin(next http.Handler) http.Handler {
 	})
 }
 
+func errorPage(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/html")
+	fmt.Fprintf(w, "<h1>Uh Oh</h1>")
+	fmt.Fprintf(w, "<h2>An error has occured.</h2>")
+}
+
 func userDashboard(w http.ResponseWriter, req *http.Request) {
 	// TODO:
 	// athleteData := stravaAPIFetch()
 	user, ok := req.Context().Value(userContextKey).(StravaAuth)
-		if !ok {
-			http.Error(w, "User not found in context", http.StatusInternalServerError)
-			return
-		}
+	if !ok {
+		http.Error(w, "User not found in context", http.StatusInternalServerError)
+		return
+	}
+	slog.Info("User data retrieved", "user", user)
 	w.Header().Set("Content-Type", "text/html")
 	fmt.Fprintf(w, "<h1>Hello, %d</h1>", user.Athlete.ID)
 	fmt.Fprintf(w, "<img src='%s'>", user.Athlete.ProfileImg)
@@ -339,6 +354,7 @@ func main() {
 	//public routes
 	mux.HandleFunc("/login", goLogin)
 	mux.HandleFunc("/exchange_token", exchangeToken)
+	mux.HandleFunc("/error", errorPage)
 
 	//private routes
 	mux.Handle("/user-dashboard", requireLogin(http.HandlerFunc(userDashboard)))
