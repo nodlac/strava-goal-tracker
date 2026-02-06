@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -17,18 +18,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
-
-
-pool := &redis.Pool{
-    MaxIdle: 10,
-    Dial: func() (redis.Conn, error) {
-        return redis.Dial("tcp", "localhost:6379")
-    },
-}
-sessionManager := scs.New()
-sessionManager.Store = redisstore.New(pool)
-sessionManager.Lifetime = 14 * 24 * time.Hour // 2 weeks   
 
 type Config struct {
 	StravaID     string
@@ -46,12 +37,40 @@ type StravaAuth struct {
 	} `json:"athlete"`
 }
 
+type contextKey string
+
+const userContextKey contextKey = "user"
+
 func (s *StravaAuth) IsValid() bool {
 	return s.AccessToken != "" && s.Athlete.ID != 0
 }
 
 var cfg *Config
 var db *sql.DB
+
+var (
+	pool           *redis.Pool
+	sessionManager *scs.SessionManager
+)
+
+func initValkey() {
+	pool = &redis.Pool{
+		MaxIdle: 10,
+		Dial: func() (redis.Conn, error) {
+			// Check for Docker environment variable, fallback to localhost
+			addr := os.Getenv("VALKEY_ADDR")
+			if addr == "" {
+				addr = "localhost:6379"
+			}
+			return redis.Dial("tcp", addr)
+		},
+	}
+
+	// Initialize the session manager using the pool
+	sessionManager = scs.New()
+	sessionManager.Store = redisstore.New(pool)
+	sessionManager.Lifetime = 30 * 24 * time.Hour
+}
 
 func initDB() {
 	// Using SQLite because it's simple and likely this app will have a total of
@@ -134,9 +153,6 @@ func saveUser(auth StravaAuth) error {
 	return err
 }
 
-func createAuthToken() {
-}
-
 func makeRequest(req *http.Request) (string, error) {
 	client := &http.Client{}
 	resp, err := client.Do(req)
@@ -170,9 +186,6 @@ func goLogin(w http.ResponseWriter, req *http.Request) {
 }
 
 func exchangeToken(w http.ResponseWriter, ogReq *http.Request) {
-	// TODO : save credentials. We'll need to place some sort of auth token on the user's machine
-	// store the auth token and refresh tokens some how (valkey?)
-	//
 	code := ogReq.URL.Query().Get("code")
 	slog.Info("code=", code)
 	endpoint := "https://www.strava.com/api/v3/oauth/token"
@@ -218,23 +231,48 @@ func exchangeToken(w http.ResponseWriter, ogReq *http.Request) {
 		// TODO: send to error page also handle access denied case
 		return
 	}
-	sessionManager.Put(r.Context(), "user_id", auth.Athlete.ID)
+	sessionManager.Put(ogReq.Context(), "user_id", auth.Athlete.ID)
 
-	// APP_URL := os.Getenv("APP_URL")
-	http.Redirect(w, req, "/user-dashboard", http.StatusFound)
+	http.Redirect(w, ogReq, "/user-dashboard", http.StatusFound)
+}
+
+func requireLogin(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Check if the user_id key exists in the session
+		stravaID := sessionManager.GetString(r.Context(), "user_id")
+		if stravaID == "" {
+			http.Redirect(w, r, "/login", http.StatusSeeOther)
+			return
+		}
+
+		var user StravaAuth // Or a dedicated User struct
+		err := db.QueryRow("SELECT strava_id, access_token, profile_img FROM users WHERE strava_id = ?",
+			stravaID).Scan(&user.Athlete.ID, &user.AccessToken, &user.Athlete.ProfileImg)
+
+		if err != nil {
+			slog.Error("Database lookup failed", "error", err)
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			return
+		}
+
+		ctx := context.WithValue(r.Context(), userContextKey, user)
+
+		// User is logged in, proceed to the next handler
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
 }
 
 func userDashboard(w http.ResponseWriter, req *http.Request) {
-    userID := sessionManager.GetInt(r.Context(), "user_id", 0)
-    if userID == 0 {
-        http.Redirect(w, r, "/login", http.StatusFound)
-        return
-    }
 	// TODO:
 	// athleteData := stravaAPIFetch()
+	user, ok := req.Context().Value(userContextKey).(StravaAuth)
+		if !ok {
+			http.Error(w, "User not found in context", http.StatusInternalServerError)
+			return
+		}
 	w.Header().Set("Content-Type", "text/html")
-	fmt.Fprintf(w, "<h1>Welcome to my Go Web Server!</h1>")
-	fmt.Fprintf(w, "<p>This is an example of serving raw HTML.</p>")
+	fmt.Fprintf(w, "<h1>Hello, %d</h1>", user.Athlete.ID)
+	fmt.Fprintf(w, "<img src='%s'>", user.Athlete.ProfileImg)
 }
 
 func stravaRefreshToken(refreshToken string) (string, error) {
@@ -292,16 +330,19 @@ func main() {
 	initLogger()
 	LoadConfig()
 	initDB()
+	initValkey()
 	defer db.Close()
 	createTables()
 
-	http.HandleFunc("/login", goLogin)
+	mux := http.NewServeMux()
 
-	http.HandleFunc("/exchange_token", exchangeToken)
+	//public routes
+	mux.HandleFunc("/login", goLogin)
+	mux.HandleFunc("/exchange_token", exchangeToken)
 
-	http.HandleFunc("/user_dashboard", userDashboard)
+	//private routes
+	mux.Handle("/user-dashboard", requireLogin(http.HandlerFunc(userDashboard)))
 
 	slog.Info("Server listening on port 8090...")
-	http.ListenAndServe(":8090", nil)
-
+	log.Fatal(http.ListenAndServe(":8090", sessionManager.LoadAndSave(mux)))
 }

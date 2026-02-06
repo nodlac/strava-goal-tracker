@@ -2,7 +2,13 @@ module github.com/nodlac/strava-goal-tracker
 
 go 1.25
 
-require github.com/joho/godotenv v1.5.1
+require (
+	github.com/alexedwards/scs/redisstore v0.0.0-20251002162104-209de6e426de
+	github.com/alexedwards/scs/v2 v2.9.0
+	github.com/gomodule/redigo v1.9.3
+	github.com/joho/godotenv v1.5.1
+	modernc.org/sqlite v1.44.3
+)
 
 require (
 	github.com/dustin/go-humanize v1.0.1 // indirect
@@ -15,5 +21,4 @@ require (
 	modernc.org/libc v1.67.6 // indirect
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.11.0 // indirect
-	modernc.org/sqlite v1.44.3 // indirect
 )
