@@ -35,6 +35,9 @@ docker run -d \
     - [x] make it so that if you try to login but are already authed it redirects to the dashboard
     - [x] logout endpoint
     - [x] refesh token on pageload
+    - [ ] setup key refresh script and fire when requests is authed but key is invalid and making a 
+            request to strava
+    - [ ] get and save user timezone
     - [ ] get athlete activities
     - [ ] get activity data 
     - [ ] record activities in database

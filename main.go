@@ -5,20 +5,20 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"io"
-	"log"
-	"log/slog"
-	"net/http"
-	"net/url"
-	"os"
-	"path/filepath"
-	"time"
-
 	"github.com/alexedwards/scs/redisstore"
 	"github.com/alexedwards/scs/v2"
 	"github.com/gomodule/redigo/redis"
 	"github.com/joho/godotenv"
+	"io"
+	"log"
+	"log/slog"
 	_ "modernc.org/sqlite"
+	"net/http"
+	"net/url"
+	"os"
+	"path/filepath"
+	"strings"
+	"time"
 )
 
 // --- Types & Globals ---
@@ -35,9 +35,10 @@ var (
 )
 
 type Config struct {
-	StravaID     string
-	StravaSecret string
-	AppURL       string
+	StravaID         string
+	StravaSecret     string
+	StravaAPIVersion string
+	AppURL           string
 }
 
 type StravaAuth struct {
@@ -96,27 +97,43 @@ func initDB() {
 	}
 	db.SetMaxOpenConns(1)
 
-	query := `
+	usersQuery := `
     CREATE TABLE IF NOT EXISTS users (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         strava_id TEXT UNIQUE,
         access_token TEXT,
         refresh_token TEXT,
         expires_at INTEGER,
-        profile_img TEXT
+        profile_img TEXT,
+        timezone TEXT
     );`
-	if _, err := db.Exec(query); err != nil {
+	if _, err := db.Exec(usersQuery); err != nil {
 		panic(err)
 	}
+
+	// acitiviesQuery := `
+	//    CREATE TABLE IF NOT EXISTS user_activities (
+	//        id INTEGER PRIMARY KEY AUTOINCREMENT,
+	//        strava_id TEXT UNIQUE FOREIGN_KEY,
+	//        activity_type TEXT,
+	//        _timestamp TIMESSTAMP,
+	//        miles INTEGER,
+	//        elevation_gain INTEGER
+	//    );`
+	// if _, err := db.Exec(acitiviesQuery); err != nil {
+	// 	panic(err)
+	// }
+
 	slog.Info("SQLite and Tables initialized")
 }
 
 func loadConfig() {
 	_ = godotenv.Load()
 	cfg = &Config{
-		StravaID:     os.Getenv("STRAVA_CLIENT_ID"),
-		StravaSecret: os.Getenv("STRAVA_CLIENT_SECRET"),
-		AppURL:       os.Getenv("APP_URL"),
+		StravaID:         os.Getenv("STRAVA_CLIENT_ID"),
+		StravaSecret:     os.Getenv("STRAVA_CLIENT_SECRET"),
+		StravaAPIVersion: os.Getenv("STRAVA_API_VERSION"),
+		AppURL:           os.Getenv("APP_URL"),
 	}
 }
 
@@ -161,11 +178,150 @@ func requireLogin(next http.Handler) http.Handler {
 	})
 }
 
+// --- Starva requests ---
+
+func checkStravaAccessToken(w http.ResponseWriter, r *http.Request) error {
+	user, ok := r.Context().Value(userContextKey).(StravaAuth)
+	if !ok {
+		http.Error(w, "Internal Server Error", 500)
+		slog.Error("User failed to load", "error")
+		return fmt.Errorf("user authentication missing from context")
+	}
+
+	if user.ExpiresAt <= time.Now().Unix() {
+		err := refreshAccessToken(w, r)
+		return err
+	}
+
+	return nil
+
+}
+
+func refreshAccessToken(w http.ResponseWriter, r *http.Request) error {
+	user, ok := r.Context().Value(userContextKey).(StravaAuth)
+	if !ok {
+		http.Error(w, "Internal Server Error", 500)
+		slog.Error("User failed to load", "error")
+		return fmt.Errorf("user authentication missing from context")
+	}
+	
+	endpoint, err := url.Parse("https://www.strava.com/oauth/token")
+	if err != nil {
+		http.Error(w, "Internal Server Error", 500)
+		slog.Error("User failed to load", "error")
+		return fmt.Errorf("Error parsing refreshAccessToken endpoint")
+	}
+
+	params := url.Values{}
+	params.Set("client_id", cfg.StravaID)
+	params.Set("client_secret", cfg.StravaSecret)
+	params.Set("refresh_token", cfg.StravaSecret)
+	params.Set("grant_type", "refresh_token")
+
+	resp, err := http.PostForm(endpoint, params)
+	if err != nil {
+		slog.Error("Refresh token failed", "error", err)
+		return err
+	}
+
+	// TODO: extract new expiresAt and accessToken and update DB 
+
+
+	return nil
+
+}
+
+func makeStravaRequest(
+	w http.ResponseWriter,
+	r *http.Request,
+	endpoint string,
+	params url.Values) (map[string]any, error) {
+	if params == nil {
+		params = url.Values{}
+	}
+
+	user, ok := r.Context().Value(userContextKey).(StravaAuth)
+	if !ok {
+		http.Error(w, "Internal Server Error", 500)
+		slog.Error("User failed to load", "error")
+		return nil, fmt.Errorf("user authentication missing from context")
+	}
+
+	encodedURL, err := url.Parse(endpoint)
+	if err != nil {
+		slog.Error("Error parsing url", "error", err)
+		return nil, err
+
+	}
+
+	// TODO: make it so that it will check the exiration of key and then update the token
+	params.Set("Authorization", fmt.Sprintf("Bearer %s", user.AccessToken))
+	resp, err := http.NewRequest("POST", encodedURL.String(), strings.NewReader(params.Encode()))
+	if err != nil {
+		slog.Error("Token exchange request failed", "error", err)
+		return nil, err
+	}
+
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("strava API returned status: %d", resp.StatusCode)
+	}
+	var data map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
+		slog.Error("Failed to decode response", "error", err)
+		return nil, err
+	}
+
+	return data, nil
+}
+
+func getDetailedProfile(athleteID int) {
+
+}
+func CleanStravaTimezone(raw string) string {
+	// Strava format: "(GMT-08:00) America/Los_Angeles"
+	parts := strings.SplitN(raw, " ", 2)
+	if len(parts) < 2 {
+		return "UTC" // Fallback if string is malformed or empty
+	}
+
+	cleanTZ := parts[1]
+
+	// Verify it's a valid IANA timezone before saving
+	_, err := time.LoadLocation(cleanTZ)
+	if err != nil {
+		return "UTC"
+	}
+
+	return cleanTZ
+}
+
+// func getActivites(auth StravaAuth) (string, error) {
+// 	endpoint, _ := url.Parse(fmt.Sprintf("https://www.strava.com/api/%s/athlete/activites", cfg.StravaAPIVersion))
+//
+// 	syncDate := time.Date(time.Now().Year(), 1, 1, 0, 0, 0, 0, time.Location{"america/Denver"})
+//
+// 	params := url.Values{}
+// 	params.Set("after", syncDate)
+// 	// TODO: add parameter after (need to think of a way to sync things by year
+// 	// I think I could do the sync starting at beginning of current year or
+// 	// since latest sync
+// 	// TODO: needs to flip through the pages if they exist
+//
+// 	return "test", nil
+// }
+
+// func getActivityDetails(auth StravaAuth, activityID int) (string, error) {
+// 	endpoint, _ := url.Parse(fmt.Sprintf("https://www.strava.com/api/%s/activites/%s", cfg.StravaAPIVersion, activityID))
+//
+// 	return "test", nil
+// }
+
 // --- Handlers ---
 
 func landing(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html")
-	fmt.Fprintf(w, "<h1>Welcome to Annual Challenge</h1><a href='/login'>Login with Strava</a>")
+	fmt.Fprintf(w, "<a href='/login'>Login with Strava</a>")
 }
 
 func goLogin(w http.ResponseWriter, r *http.Request) {
@@ -202,21 +358,23 @@ func exchangeToken(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/error", http.StatusFound)
 		return
 	}
-	defer resp.Body.Close()
 
 	var auth StravaAuth
 	if err := json.NewDecoder(resp.Body).Decode(&auth); err != nil {
+		slog.Error("Error reading athlete auth", "error", err)
 		http.Error(w, "Invalid response", http.StatusInternalServerError)
 		return
 	}
 
 	if !auth.IsValid() {
+		slog.Error("Invalid athlete auth")
 		http.Redirect(w, r, "/error", http.StatusFound)
 		return
 	}
 
 	if err := saveUser(auth); err != nil {
 		slog.Error("Failed to save user", "error", err)
+		http.Redirect(w, r, "/error", http.StatusFound)
 		return
 	}
 
@@ -225,11 +383,18 @@ func exchangeToken(w http.ResponseWriter, r *http.Request) {
 }
 
 func userDashboard(w http.ResponseWriter, r *http.Request) {
-	user := r.Context().Value(userContextKey).(StravaAuth)
-
+	user, ok := r.Context().Value(userContextKey).(StravaAuth)
+	if ok {
+		http.Error(w, "Internal Server Error", 500)
+		return
+	}
 	w.Header().Set("Content-Type", "text/html")
 	fmt.Fprintf(w, "<h1>Hello, %d</h1><img src='%s'><br><a href='/logout'>Logout</a>",
 		user.Athlete.ID, user.Athlete.ProfileImg)
+
+	// activities, err :=
+
+	fmt.Fprintf(w, "%s", "data")
 }
 
 func goLogout(w http.ResponseWriter, r *http.Request) {
