@@ -32,9 +32,6 @@ docker run -d \
 ```
 
 # TODO: 
-    - [x] make it so that if you try to login but are already authed it redirects to the dashboard
-    - [x] logout endpoint
-    - [x] refesh token on pageload
     - [ ] setup key refresh script and fire when requests is authed but key is invalid and making a 
             request to strava
     - [ ] get and save user timezone
@@ -47,6 +44,11 @@ docker run -d \
     - [ ] build out goals table
     - [ ] build out set goals section
     - [ ] build out dashboard page run calculations for where we should be at
+    - [ ] add way to manually set your timezone
+
+    - [x] refesh token on pageload
+    - [x] make it so that if you try to login but are already authed it redirects to the dashboard
+    - [x] logout endpoint
     - [x] Connect up valkey for session auth
     - [x] create dev startup script that setups up docker and runs air for simplicity
 

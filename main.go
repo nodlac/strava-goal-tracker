@@ -5,20 +5,22 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"github.com/alexedwards/scs/redisstore"
-	"github.com/alexedwards/scs/v2"
-	"github.com/gomodule/redigo/redis"
-	"github.com/joho/godotenv"
 	"io"
 	"log"
 	"log/slog"
-	_ "modernc.org/sqlite"
 	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
+
+	"github.com/alexedwards/scs/redisstore"
+	"github.com/alexedwards/scs/v2"
+	"github.com/gomodule/redigo/redis"
+	"github.com/joho/godotenv"
+	_ "modernc.org/sqlite"
 )
 
 // --- Types & Globals ---
@@ -49,6 +51,17 @@ type StravaAuth struct {
 		ID         int64  `json:"id"`
 		ProfileImg string `json:"profile"`
 	} `json:"athlete"`
+}
+
+type Activity struct {
+	ID        int64     `json:"id"`
+	Name      string    `json:"name"`
+	Distance  float64   `json:"distance"`
+	Elevation float64   `json:"total_elevation_gain"`
+	Minutes   int       `json:"moving_time"`
+	Type      string    `json:"type"`
+	StartDate time.Time `json:"start_date"`
+	Timezone  string    `json:"timezone"`
 }
 
 func (s *StravaAuth) IsValid() bool {
@@ -105,7 +118,8 @@ func initDB() {
         refresh_token TEXT,
         expires_at INTEGER,
         profile_img TEXT,
-        timezone TEXT
+        timezone TEXT,
+        synced_through INTEGER
     );`
 	if _, err := db.Exec(usersQuery); err != nil {
 		panic(err)
@@ -242,17 +256,9 @@ func refreshAccessToken(w http.ResponseWriter, r *http.Request) error {
 }
 
 func makeStravaGetRequest(
-	w http.ResponseWriter,
-	r *http.Request,
+	user StravaAuth,
 	endpoint string,
-	params url.Values) (any, error) {
-
-	user, ok := r.Context().Value(userContextKey).(StravaAuth)
-	if !ok {
-		slog.Error("User failed to fetch user from context")
-		http.Error(w, "Internal Server Error", 500)
-		return nil, fmt.Errorf("user authentication missing from context")
-	}
+	params url.Values) ([]byte, error) {
 
 	encodedURL, err := url.Parse(endpoint)
 	if err != nil {
@@ -260,9 +266,6 @@ func makeStravaGetRequest(
 		return nil, err
 
 	}
-
-	// TODO: make it so that it will check the exiration of key and then update the token
-	// TODO: add 401 refresh token and retry
 
 	req, err := http.NewRequest("GET", encodedURL.String(), nil)
 	if err != nil {
@@ -276,7 +279,6 @@ func makeStravaGetRequest(
 		req.URL.RawQuery = params.Encode()
 	}
 
-
 	client := &http.Client{Timeout: 10 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
@@ -286,16 +288,13 @@ func makeStravaGetRequest(
 
 	defer resp.Body.Close()
 
+	// TODO: make it so that it will check the exiration of key and then update the token
+	// TODO: add 401 refresh token and retry
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("strava API returned status: %d", resp.StatusCode)
 	}
-	var data any
-	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
-		slog.Error("Failed to decode response", "error", err)
-		return nil, err
-	}
 
-	return data, nil
+	return io.ReadAll(resp.Body)
 }
 
 func getDetailedProfile(athleteID int) {
@@ -320,20 +319,36 @@ func CleanStravaTimezone(raw string) string {
 	return cleanTZ
 }
 
-// func getActivites(auth StravaAuth) (string, error) {
-// 	endpoint, _ := url.Parse(fmt.Sprintf("https://www.strava.com/api/%s/athlete/activites", cfg.StravaAPIVersion))
-//
-// 	syncDate := time.Date(time.Now().Year(), 1, 1, 0, 0, 0, 0, time.Location{"america/Denver"})
-//
-// 	params := url.Values{}
-// 	params.Set("after", syncDate)
-// 	// TODO: add parameter after (need to think of a way to sync things by year
-// 	// I think I could do the sync starting at beginning of current year or
-// 	// since latest sync
-// 	// TODO: needs to flip through the pages if they exist
-//
-// 	return "test", nil
-// }
+func getActivites(user StravaAuth) ([]Activity, error) {
+
+	// TODO: check for timezone if not present then collect all activites then UTC - 1 day and set timeszone after
+
+	loc, err := time.LoadLocation("America/Denver")
+	if err != nil {
+		return nil, fmt.Errorf("Timezone failed to resolve")
+	}
+	syncDate := time.Date(time.Now().Year(), 1, 1, 0, 0, 0, 0, loc)
+
+	unixSyncDate := strconv.FormatInt(syncDate.Unix(), 10)
+	params := url.Values{}
+	params.Set("after", unixSyncDate)
+
+	// TODO: check for real TimeZone and save to DB
+	// TODO: needs to flip through the pages if they exist
+	data, err := makeStravaGetRequest(user, "https://www.strava.com/api/v3/activities", params)
+	if err != nil {
+		slog.Error("Error getting activities", "error", err)
+		return nil, err
+	}
+
+	var activities []Activity
+	err = json.Unmarshal(data, &activities)
+	if err != nil {
+		return nil, err
+	}
+
+	return activities, nil
+}
 
 // func getActivityDetails(auth StravaAuth, activityID int) (string, error) {
 // 	endpoint, _ := url.Parse(fmt.Sprintf("https://www.strava.com/api/%s/activites/%s", cfg.StravaAPIVersion, activityID))
@@ -415,22 +430,25 @@ func userDashboard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// testing refresh logic this request works so I just need to  figure out the refresh logic
-	data, err := makeStravaGetRequest(w, r, "https://www.strava.com/api/v3/activities", nil)
-	if err != nil {
-		slog.Error("Error getting activities", "error", err)
-		http.Error(w, "Internal Server Error", 500)
-		return 
-	}
-	slog.Info("Data Returned", "info", data)
-
 	w.Header().Set("Content-Type", "text/html")
-	fmt.Fprintf(w, "<h1>Hello, %d</h1><img src='%s'><br><a href='/logout'>Logout</a>",
+	fmt.Fprintf(w, "<div><h1>Hello, %d</h1><img src='%s'><br><a href='/logout'>Logout</a></div>\n",
 		user.Athlete.ID, user.Athlete.ProfileImg)
 
-	// activities, err :=
+	// test activiteis endpoint and token refresh
+	activities, err := getActivites(user)
+	if err != nil {
+		slog.Error("Error fetching activites", "error", err)
+	}
+	// 2. Turn the slice into "Pretty" JSON bytes
+	prettyJSON, err := json.MarshalIndent(activities, "", "    ")
+	if err != nil {
+		slog.Error("JSON marshaling failed", "error", err)
+		return
+	}
 
-	fmt.Fprintf(w, "%s", "data")
+	// 3. Set content type and print to webpage
+	w.Header().Set("Content-Type", "text/html")
+	fmt.Fprintf(w, "<html><body><h1>Activities</h1><pre>%s</pre></body></html>", string(prettyJSON))
 }
 
 func goLogout(w http.ResponseWriter, r *http.Request) {
