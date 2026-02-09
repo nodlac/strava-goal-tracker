@@ -141,6 +141,8 @@ func initDB() {
 		panic(err)
 	}
 
+	// TODO: is there an activity ID? if so should store that too and use as primary key 
+
 	// acitiviesQuery := `
 	//    CREATE TABLE IF NOT EXISTS user_activities (
 	//        id INTEGER PRIMARY KEY AUTOINCREMENT,
