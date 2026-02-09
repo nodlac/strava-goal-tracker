@@ -47,6 +47,8 @@ type StravaAuth struct {
 	ExpiresAt    int64  `json:"expires_at"`
 	RefreshToken string `json:"refresh_token"`
 	AccessToken  string `json:"access_token"`
+	Timezone     string `json:"timezone"`
+	SyncedTo     int64  `json:"synced_to"`
 	Athlete      struct {
 		ID         int64  `json:"id"`
 		ProfileImg string `json:"profile"`
@@ -133,7 +135,7 @@ func initDB() {
         expires_at INTEGER,
         profile_img TEXT,
         timezone TEXT,
-        synced_through INTEGER
+        synced_to INTEGER
     );`
 	if _, err := db.Exec(usersQuery); err != nil {
 		panic(err)
@@ -180,6 +182,13 @@ func createUser(auth StravaAuth) error {
 	return err
 }
 
+func bulkSaveActivities(activities []Activity) error {
+	//TODO: creat bulk insert function
+	query := ``
+	_, err := db.Exec(query, )
+	return err
+}
+
 func updateUserTokens(user StravaAuth, freshTokens StravaRefreshResponse) error {
 	query := `
 	UPDATE users 
@@ -188,6 +197,16 @@ func updateUserTokens(user StravaAuth, freshTokens StravaRefreshResponse) error 
         expires_at = ?
     WHERE strava_id = ?`
 	_, err := db.Exec(query, freshTokens.AccessToken, freshTokens.RefreshToken, freshTokens.ExpiresAt, user.Athlete.ID)
+	return err
+}
+
+func updateSyncMeta(user StravaAuth) error {
+	query := `
+	UPDATE users 
+    SET timezone = ?, 
+    synced_to = ?, 
+    WHERE strava_id = ?`
+	_, err := db.Exec(query, user.Timezone, user.SyncedTo, user.Athlete.ID)
 	return err
 }
 
@@ -203,8 +222,23 @@ func requireLogin(next http.Handler) http.Handler {
 		}
 
 		var user StravaAuth
-		err := db.QueryRow("SELECT strava_id, refresh_token, access_token, profile_img FROM users WHERE strava_id = ?",
-			stravaID).Scan(&user.Athlete.ID, &user.RefreshToken, &user.AccessToken, &user.Athlete.ProfileImg)
+		err := db.QueryRow(
+			`SELECT 
+				strava_id, 
+				refresh_token, 
+				access_token, 
+				profile_img, 
+				timezone,
+				synced_to 
+			FROM users 
+			WHERE strava_id = ?`,
+			stravaID).Scan(
+			&user.Athlete.ID,
+			&user.RefreshToken,
+			&user.AccessToken,
+			&user.Athlete.ProfileImg,
+			&user.Timezone,
+			&user.SyncedTo)
 
 		if err != nil {
 			slog.Error("Context hydration failed", "error", err)
@@ -340,35 +374,75 @@ func CleanStravaTimezone(raw string) string {
 	return cleanTZ
 }
 
-func getActivites(user StravaAuth) ([]Activity, error) {
+func syncActivites(user StravaAuth) error {
+	var err error
 
-	// TODO: check for timezone if not present then collect all activites then UTC - 1 day and set timeszone after
-
-	loc, err := time.LoadLocation("America/Denver")
-	if err != nil {
-		return nil, fmt.Errorf("Timezone failed to resolve")
+	timezone := user.Timezone
+	if timezone == "" {
+		timezone = "UTC"
 	}
-	syncDate := time.Date(time.Now().Year(), 1, 1, 0, 0, 0, 0, loc)
 
-	unixSyncDate := strconv.FormatInt(syncDate.Unix(), 10)
+	loc, err := time.LoadLocation(timezone)
+	if err != nil {
+		slog.Warn("Invalid timezone, defaulting to UTC", "error", err)
+		loc = time.UTC
+	}
+
+	syncDate := user.SyncedTo
+	if user.SyncedTo == 0 {
+		janFirst := time.Date(time.Now().Year(), time.January, 1, 0, 0, 0, 0, loc)
+		syncDate = janFirst.AddDate(0, 0, -1).Unix()
+	}
+
+	formattedSyncDate := strconv.FormatInt(syncDate, 10)
 	params := url.Values{}
-	params.Set("after", unixSyncDate)
+	params.Set("after", formattedSyncDate)
 
-	// TODO: check for real TimeZone and save to DB
-	// TODO: needs to flip through the pages if they exist
 	data, err := makeStravaGetRequest(user, "https://www.strava.com/api/v3/activities", params)
 	if err != nil {
 		slog.Error("Error getting activities", "error", err)
-		return nil, err
+		return err
 	}
 
 	var activities []Activity
 	err = json.Unmarshal(data, &activities)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	return activities, nil
+	if len(activities) == 0 {
+		return nil
+	}
+
+	// TODO: needs to flip through the pages if they exist and add to activity list
+	// TODO: need to save all activities we'll make the queries fast and performant later.
+
+
+	counts := make(map[string]int)
+	for _, act := range activities {
+		counts[act.Timezone]++
+	}
+
+	// TODO: get most common timezone
+	mostCommonTimezone := "UTC"
+	if user.Timezone == "" {
+		user.Timezone = CleanStravaTimezone(mostCommonTimezone)
+		slog.Info("clean timezone", "info", user.Timezone)
+		slog.Info("dirty timezone", "info", mostCommonTimezone)
+	}
+
+	loc, err = time.LoadLocation(user.Timezone)
+	if err != nil {
+		slog.Error("User timezone failed to resolve", "error", err)
+		loc = time.UTC
+	}
+
+	err = updateSyncMeta(user)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 // --- Handlers ---
