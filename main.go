@@ -204,7 +204,7 @@ func refreshAccessToken(w http.ResponseWriter, r *http.Request) error {
 		slog.Error("User failed to load", "error")
 		return fmt.Errorf("user authentication missing from context")
 	}
-	
+
 	endpoint, err := url.Parse("https://www.strava.com/oauth/token")
 	if err != nil {
 		http.Error(w, "Internal Server Error", 500)
@@ -218,32 +218,39 @@ func refreshAccessToken(w http.ResponseWriter, r *http.Request) error {
 	params.Set("refresh_token", cfg.StravaSecret)
 	params.Set("grant_type", "refresh_token")
 
-	resp, err := http.PostForm(endpoint, params)
+	resp, err := http.PostForm(endpoint.String(), params)
 	if err != nil {
 		slog.Error("Refresh token failed", "error", err)
 		return err
 	}
 
-	// TODO: extract new expiresAt and accessToken and update DB 
+	defer resp.Body.Close()
 
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		slog.Error("Failed to convert resp.body to bytes", "error", err)
+		return err
+	}
+
+	fmt.Println(user)
+	fmt.Println(string(bodyBytes))
+
+	// TODO: extract new expiresAt and accessToken and update DB
 
 	return nil
 
 }
 
-func makeStravaRequest(
+func makeStravaGetRequest(
 	w http.ResponseWriter,
 	r *http.Request,
 	endpoint string,
-	params url.Values) (map[string]any, error) {
-	if params == nil {
-		params = url.Values{}
-	}
+	params url.Values) (any, error) {
 
 	user, ok := r.Context().Value(userContextKey).(StravaAuth)
 	if !ok {
+		slog.Error("User failed to fetch user from context")
 		http.Error(w, "Internal Server Error", 500)
-		slog.Error("User failed to load", "error")
 		return nil, fmt.Errorf("user authentication missing from context")
 	}
 
@@ -255,18 +262,34 @@ func makeStravaRequest(
 	}
 
 	// TODO: make it so that it will check the exiration of key and then update the token
-	params.Set("Authorization", fmt.Sprintf("Bearer %s", user.AccessToken))
-	resp, err := http.NewRequest("POST", encodedURL.String(), strings.NewReader(params.Encode()))
+	// TODO: add 401 refresh token and retry
+
+	req, err := http.NewRequest("GET", encodedURL.String(), nil)
 	if err != nil {
-		slog.Error("Token exchange request failed", "error", err)
+		slog.Error("Failed to create http request", "error", err)
+		return nil, err
+	}
+
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", user.AccessToken))
+
+	if params != nil {
+		req.URL.RawQuery = params.Encode()
+	}
+
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		slog.Error("Failed to make request to Strava", "error", err)
 		return nil, err
 	}
 
 	defer resp.Body.Close()
+
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("strava API returned status: %d", resp.StatusCode)
 	}
-	var data map[string]any
+	var data any
 	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
 		slog.Error("Failed to decode response", "error", err)
 		return nil, err
@@ -278,6 +301,7 @@ func makeStravaRequest(
 func getDetailedProfile(athleteID int) {
 
 }
+
 func CleanStravaTimezone(raw string) string {
 	// Strava format: "(GMT-08:00) America/Los_Angeles"
 	parts := strings.SplitN(raw, " ", 2)
@@ -383,11 +407,23 @@ func exchangeToken(w http.ResponseWriter, r *http.Request) {
 }
 
 func userDashboard(w http.ResponseWriter, r *http.Request) {
+
 	user, ok := r.Context().Value(userContextKey).(StravaAuth)
-	if ok {
+	if !ok {
+		slog.Error("Context fetch failed")
 		http.Error(w, "Internal Server Error", 500)
 		return
 	}
+
+	// testing refresh logic this request works so I just need to  figure out the refresh logic
+	data, err := makeStravaGetRequest(w, r, "https://www.strava.com/api/v3/activities", nil)
+	if err != nil {
+		slog.Error("Error getting activities", "error", err)
+		http.Error(w, "Internal Server Error", 500)
+		return 
+	}
+	slog.Info("Data Returned", "info", data)
+
 	w.Header().Set("Content-Type", "text/html")
 	fmt.Fprintf(w, "<h1>Hello, %d</h1><img src='%s'><br><a href='/logout'>Logout</a>",
 		user.Athlete.ID, user.Athlete.ProfileImg)

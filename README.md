@@ -6,7 +6,7 @@ sudo systemctl start docker
 
 ## Start the container
 ```
-docker run valkey-server
+docker run valkey-server
 ```
 
 ## First run
