@@ -53,6 +53,12 @@ type StravaAuth struct {
 	} `json:"athlete"`
 }
 
+type StravaRefreshResponse struct {
+	AccessToken  string `json:"access_token"`
+	RefreshToken string `json:"refresh_token"`
+	ExpiresAt    int64  `json:"expires_at"`
+}
+
 type Activity struct {
 	ID        int64     `json:"id"`
 	Name      string    `json:"name"`
@@ -178,8 +184,8 @@ func requireLogin(next http.Handler) http.Handler {
 		}
 
 		var user StravaAuth
-		err := db.QueryRow("SELECT strava_id, access_token, profile_img FROM users WHERE strava_id = ?",
-			stravaID).Scan(&user.Athlete.ID, &user.AccessToken, &user.Athlete.ProfileImg)
+		err := db.QueryRow("SELECT strava_id, refresh_token, access_token, profile_img FROM users WHERE strava_id = ?",
+			stravaID).Scan(&user.Athlete.ID, &user.RefreshToken, &user.AccessToken, &user.Athlete.ProfileImg)
 
 		if err != nil {
 			slog.Error("Context hydration failed", "error", err)
@@ -194,6 +200,53 @@ func requireLogin(next http.Handler) http.Handler {
 
 // --- Starva requests ---
 
+func refreshAccessToken(user StravaAuth) error {
+
+	if user.RefreshToken == "" {
+		return fmt.Errorf("User missing refresh token")
+	}
+
+	slog.Info("Attempting refresh",
+		"client_id", cfg.StravaID,
+		"refresh_token_exists", user.RefreshToken != "",
+		"token_preview", user.RefreshToken[:5]+"...") // Only log a snippet for security
+
+	endpoint, err := url.Parse("https://www.strava.com/oauth/token")
+	if err != nil {
+		return fmt.Errorf("Error parsing refreshAccessToken endpoint")
+	}
+
+	params := url.Values{}
+	params.Set("client_id", cfg.StravaID)
+	params.Set("client_secret", cfg.StravaSecret)
+	params.Set("refresh_token", user.RefreshToken)
+	params.Set("grant_type", "refresh_token")
+
+	resp, err := http.PostForm(endpoint.String(), params)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		// Read the error message so we know why it failed
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("strava error %d: %s", resp.StatusCode, string(body))
+	}
+
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return err
+	}
+
+	slog.Info(string(bodyBytes))
+
+	// TODO: extract new expiresAt and accessToken and update DB
+
+	return nil
+
+}
+
 func checkStravaAccessToken(w http.ResponseWriter, r *http.Request) error {
 	user, ok := r.Context().Value(userContextKey).(StravaAuth)
 	if !ok {
@@ -203,53 +256,9 @@ func checkStravaAccessToken(w http.ResponseWriter, r *http.Request) error {
 	}
 
 	if user.ExpiresAt <= time.Now().Unix() {
-		err := refreshAccessToken(w, r)
+		err := refreshAccessToken(user)
 		return err
 	}
-
-	return nil
-
-}
-
-func refreshAccessToken(w http.ResponseWriter, r *http.Request) error {
-	user, ok := r.Context().Value(userContextKey).(StravaAuth)
-	if !ok {
-		http.Error(w, "Internal Server Error", 500)
-		slog.Error("User failed to load", "error")
-		return fmt.Errorf("user authentication missing from context")
-	}
-
-	endpoint, err := url.Parse("https://www.strava.com/oauth/token")
-	if err != nil {
-		http.Error(w, "Internal Server Error", 500)
-		slog.Error("User failed to load", "error")
-		return fmt.Errorf("Error parsing refreshAccessToken endpoint")
-	}
-
-	params := url.Values{}
-	params.Set("client_id", cfg.StravaID)
-	params.Set("client_secret", cfg.StravaSecret)
-	params.Set("refresh_token", cfg.StravaSecret)
-	params.Set("grant_type", "refresh_token")
-
-	resp, err := http.PostForm(endpoint.String(), params)
-	if err != nil {
-		slog.Error("Refresh token failed", "error", err)
-		return err
-	}
-
-	defer resp.Body.Close()
-
-	bodyBytes, err := io.ReadAll(resp.Body)
-	if err != nil {
-		slog.Error("Failed to convert resp.body to bytes", "error", err)
-		return err
-	}
-
-	fmt.Println(user)
-	fmt.Println(string(bodyBytes))
-
-	// TODO: extract new expiresAt and accessToken and update DB
 
 	return nil
 
@@ -290,6 +299,10 @@ func makeStravaGetRequest(
 
 	// TODO: make it so that it will check the exiration of key and then update the token
 	// TODO: add 401 refresh token and retry
+	if resp.StatusCode == http.StatusUnauthorized {
+		refreshAccessToken(user)
+	}
+
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("strava API returned status: %d", resp.StatusCode)
 	}
@@ -349,12 +362,6 @@ func getActivites(user StravaAuth) ([]Activity, error) {
 
 	return activities, nil
 }
-
-// func getActivityDetails(auth StravaAuth, activityID int) (string, error) {
-// 	endpoint, _ := url.Parse(fmt.Sprintf("https://www.strava.com/api/%s/activites/%s", cfg.StravaAPIVersion, activityID))
-//
-// 	return "test", nil
-// }
 
 // --- Handlers ---
 
@@ -434,21 +441,25 @@ func userDashboard(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "<div><h1>Hello, %d</h1><img src='%s'><br><a href='/logout'>Logout</a></div>\n",
 		user.Athlete.ID, user.Athlete.ProfileImg)
 
-	// test activiteis endpoint and token refresh
-	activities, err := getActivites(user)
+	err := refreshAccessToken(user)
 	if err != nil {
-		slog.Error("Error fetching activites", "error", err)
-	}
-	// 2. Turn the slice into "Pretty" JSON bytes
-	prettyJSON, err := json.MarshalIndent(activities, "", "    ")
-	if err != nil {
-		slog.Error("JSON marshaling failed", "error", err)
-		return
+		slog.Error("error refreshing token", "error", err)
 	}
 
+	// // test activiteis endpoint and token refresh
+	// activities, err := getActivites(user)
+	// if err != nil {
+	// 	slog.Error("Error fetching activites", "error", err)
+	// }
+	// // 2. Turn the slice into "Pretty" JSON bytes
+	// prettyJSON, err := json.MarshalIndent(activities, "", "    ")
+	// if err != nil {
+	// 	slog.Error("JSON marshaling failed", "error", err)
+	// 	return
+	// }
+
 	// 3. Set content type and print to webpage
-	w.Header().Set("Content-Type", "text/html")
-	fmt.Fprintf(w, "<html><body><h1>Activities</h1><pre>%s</pre></body></html>", string(prettyJSON))
+	// fmt.Fprintf(w, "<html><body><h1>Activities</h1><pre>%s</pre></body></html>", string(prettyJSON))
 }
 
 func goLogout(w http.ResponseWriter, r *http.Request) {
