@@ -57,6 +57,10 @@ func (s *StravaAuth) IsValid() bool {
 	return s.AccessToken != "" && s.Athlete.ID != 0
 }
 
+func (s *StravaAuth) IsAccessTokenValid() bool {
+	return s.ExpiresAt > (time.Now().Unix() + 60)
+}
+
 type StravaRefreshResponse struct {
 	AccessToken  string `json:"access_token"`
 	RefreshToken string `json:"refresh_token"`
@@ -64,7 +68,7 @@ type StravaRefreshResponse struct {
 }
 
 func (s *StravaRefreshResponse) IsValid() bool {
-	return freshTokens.AccessToken == "" || freshTokens.ExpiresAt == 0 || freshTokens.RefreshToken == "" 
+	return s.AccessToken == "" || s.ExpiresAt == 0 || s.RefreshToken == ""
 }
 
 type Activity struct {
@@ -183,7 +187,7 @@ func updateUserTokens(user StravaAuth, freshTokens StravaRefreshResponse) error 
         refresh_token = ?, 
         expires_at = ?
     WHERE strava_id = ?`
-	_, err := db.Exec(query,  freshTokens.AccessToken, freshTokens.RefreshToken, freshTokens.ExpiresAt, user.Athlete.ID )
+	_, err := db.Exec(query, freshTokens.AccessToken, freshTokens.RefreshToken, freshTokens.ExpiresAt, user.Athlete.ID)
 	return err
 }
 
@@ -192,7 +196,7 @@ func updateUserTokens(user StravaAuth, freshTokens StravaRefreshResponse) error 
 func requireLogin(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		stravaID := sessionManager.GetInt64(r.Context(), "user_id")
-		if stravaID == 0  {
+		if stravaID == 0 {
 			slog.Warn("Unauthorized access attempt")
 			http.Redirect(w, r, "/login", http.StatusSeeOther)
 			return
@@ -258,23 +262,6 @@ func refreshAccessToken(user StravaAuth) error {
 
 }
 
-func checkStravaAccessToken(w http.ResponseWriter, r *http.Request) error {
-	user, ok := r.Context().Value(userContextKey).(StravaAuth)
-	if !ok {
-		http.Error(w, "Internal Server Error", 500)
-		slog.Error("User failed to load", "error")
-		return fmt.Errorf("user authentication missing from context")
-	}
-
-	if user.ExpiresAt <= time.Now().Unix() {
-		err := refreshAccessToken(user)
-		return err
-	}
-
-	return nil
-
-}
-
 func makeStravaGetRequest(
 	user StravaAuth,
 	endpoint string,
@@ -284,7 +271,13 @@ func makeStravaGetRequest(
 	if err != nil {
 		slog.Error("Error parsing url", "error", err)
 		return nil, err
+	}
 
+	if !user.IsAccessTokenValid() {
+		err = refreshAccessToken(user)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	req, err := http.NewRequest("GET", encodedURL.String(), nil)
@@ -309,9 +302,13 @@ func makeStravaGetRequest(
 	defer resp.Body.Close()
 
 	// TODO: make it so that it will check the exiration of key and then update the token
-	// TODO: add 401 refresh token and retry
 	if resp.StatusCode == http.StatusUnauthorized {
-		refreshAccessToken(user)
+		err = refreshAccessToken(user)
+		if err != nil {
+			return nil, err
+		}
+
+		return makeStravaGetRequest(user, endpoint, params)
 	}
 
 	if resp.StatusCode != http.StatusOK {
