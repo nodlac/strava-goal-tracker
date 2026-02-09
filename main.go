@@ -53,10 +53,18 @@ type StravaAuth struct {
 	} `json:"athlete"`
 }
 
+func (s *StravaAuth) IsValid() bool {
+	return s.AccessToken != "" && s.Athlete.ID != 0
+}
+
 type StravaRefreshResponse struct {
 	AccessToken  string `json:"access_token"`
 	RefreshToken string `json:"refresh_token"`
 	ExpiresAt    int64  `json:"expires_at"`
+}
+
+func (s *StravaRefreshResponse) IsValid() bool {
+	return freshTokens.AccessToken == "" || freshTokens.ExpiresAt == 0 || freshTokens.RefreshToken == "" 
 }
 
 type Activity struct {
@@ -68,10 +76,6 @@ type Activity struct {
 	Type      string    `json:"type"`
 	StartDate time.Time `json:"start_date"`
 	Timezone  string    `json:"timezone"`
-}
-
-func (s *StravaAuth) IsValid() bool {
-	return s.AccessToken != "" && s.Athlete.ID != 0
 }
 
 // --- Initialization ---
@@ -159,7 +163,7 @@ func loadConfig() {
 
 // --- Database Logic ---
 
-func saveUser(auth StravaAuth) error {
+func createUser(auth StravaAuth) error {
 	query := `
     INSERT INTO users (strava_id, access_token, refresh_token, expires_at, profile_img) 
     VALUES (?, ?, ?, ?, ?)
@@ -172,12 +176,23 @@ func saveUser(auth StravaAuth) error {
 	return err
 }
 
+func updateUserTokens(user StravaAuth, freshTokens StravaRefreshResponse) error {
+	query := `
+	UPDATE users 
+    SET access_token = ?, 
+        refresh_token = ?, 
+        expires_at = ?
+    WHERE strava_id = ?`
+	_, err := db.Exec(query,  freshTokens.AccessToken, freshTokens.RefreshToken, freshTokens.ExpiresAt, user.Athlete.ID )
+	return err
+}
+
 // --- Middleware ---
 
 func requireLogin(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		stravaID := sessionManager.GetInt64(r.Context(), "user_id")
-		if stravaID == 0 {
+		if stravaID == 0  {
 			slog.Warn("Unauthorized access attempt")
 			http.Redirect(w, r, "/login", http.StatusSeeOther)
 			return
@@ -206,11 +221,6 @@ func refreshAccessToken(user StravaAuth) error {
 		return fmt.Errorf("User missing refresh token")
 	}
 
-	slog.Info("Attempting refresh",
-		"client_id", cfg.StravaID,
-		"refresh_token_exists", user.RefreshToken != "",
-		"token_preview", user.RefreshToken[:5]+"...") // Only log a snippet for security
-
 	endpoint, err := url.Parse("https://www.strava.com/oauth/token")
 	if err != nil {
 		return fmt.Errorf("Error parsing refreshAccessToken endpoint")
@@ -233,17 +243,18 @@ func refreshAccessToken(user StravaAuth) error {
 		body, _ := io.ReadAll(resp.Body)
 		return fmt.Errorf("strava error %d: %s", resp.StatusCode, string(body))
 	}
+	var freshTokens StravaRefreshResponse
 
-	bodyBytes, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return err
+	if err := json.NewDecoder(resp.Body).Decode(&freshTokens); err != nil {
+		return fmt.Errorf("Failed to decodde response")
 	}
 
-	slog.Info(string(bodyBytes))
+	if !freshTokens.IsValid() {
+		return fmt.Errorf("Refresh Token Data Invalid")
+	}
 
-	// TODO: extract new expiresAt and accessToken and update DB
-
-	return nil
+	err = updateUserTokens(user, freshTokens)
+	return err
 
 }
 
@@ -418,7 +429,7 @@ func exchangeToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := saveUser(auth); err != nil {
+	if err := createUser(auth); err != nil {
 		slog.Error("Failed to save user", "error", err)
 		http.Redirect(w, r, "/error", http.StatusFound)
 		return
