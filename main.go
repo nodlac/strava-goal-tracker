@@ -142,12 +142,12 @@ func initDB() {
 	   CREATE TABLE IF NOT EXISTS user_activities (
 	       	id INTEGER PRIMARY KEY AUTOINCREMENT,
 			strava_activity_id INTEGER UNIQUE,
-			user_strava_id INTEGER FOREIGN_KEY,
+			user_strava_id INTEGER,
 			activity_type TEXT,
-			start_date TIMESTAMP,
+			start_date INTEGER,
 			distance REAL,
 			elevation_gain REAL,
-			FOREIGN KEY(user_id) REFERENCES users(strava_id)
+			FOREIGN KEY(user_strava_id) REFERENCES users(strava_id)
 		);`
 	if _, err := db.Exec(acitiviesQuery); err != nil {
 		panic(err)
@@ -196,7 +196,7 @@ func bulkSaveActivities(db *sql.DB, activities []Activity, userStravaID int64) e
 			act.ID,
 			userStravaID,
 			act.Type,
-			act.StartDate.Unix(), // Store as Unix timestamp
+			act.StartDate.Unix(),
 			act.Distance,
 			act.Elevation,
 		)
@@ -428,21 +428,31 @@ func syncActivities(user StravaAuth) error {
 		loc = time.UTC
 	}
 
-	var syncDate time.Time
+	var syncUnix sql.NullInt64
 	err = db.QueryRow(
 		`SELECT 
-			max(start_date)
-		FROM activities 
-		WHERE strava_id = ?`,
+			MAX(start_date)
+		FROM user_activities 
+		WHERE user_strava_id = ?`,
 		user.Athlete.ID).Scan(
-		syncDate)
+		&syncUnix)
 
-	if syncDate.IsZero() {
-		janFirst := time.Date(time.Now().Year(), time.January, 1, 0, 0, 0, 0, loc)
-		syncDate = janFirst.AddDate(0, 0, -1)
+	var syncDate int64
+
+	if err != nil && err != sql.ErrNoRows {
+		return fmt.Errorf("database error: %w", err)
 	}
 
-	formattedSyncDate := strconv.FormatInt(syncDate.Unix(), 10)
+	if syncUnix.Valid && syncUnix.Int64 > 0 {
+		// We found a previous sync!
+		syncDate = syncUnix.Int64
+	} else {
+		// New User: Default to the beginning of the current year
+		// We calculate the Unix timestamp for Jan 1st
+		syncDate = time.Date(time.Now().Year(), time.January, 1, 0, 0, 0, 0, loc).AddDate(0, 0, -1).Unix()
+	}
+
+	formattedSyncDate := strconv.FormatInt(syncDate, 10)
 	params := url.Values{}
 	params.Set("after", formattedSyncDate)
 
@@ -658,7 +668,16 @@ func handleSyncActivities(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	syncActivities(user)
+	err := syncActivities(user)
+	if err != nil {
+	fmt.Fprintf(w, `
+    <div>
+        <button hx-post="/sync" hx-target="#sync-ui" hx-indicator="#loading">Sync Again</button>
+        <p>Failed! -- %s</p>
+    </div>
+	`, user.Timezone, err)
+	return
+	}
 
 	fmt.Fprintf(w, `
     <div>

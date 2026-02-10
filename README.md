@@ -32,20 +32,19 @@ docker run -d \
 ```
 
 # TODO: 
-- [ ] get and save user timezone
-- [ ] setup activites DB
-- [ ] finish activiy sync
-- [ ] get athlete activities
-- [ ] get activity data 
-- [ ] record activities in database
-- [ ] pull in 2026 performance
+- [ ] finish activity sync -- just need to be able to handle pagination and getting all activities.
 - [ ] refresh data on dashboard load
-- [ ] Sync athlete data button 
 - [ ] build out goals table
 - [ ] build out set goals section
 - [ ] build out dashboard page run calculations for where we should be at
 - [ ] add way to manually set your timezone
 
+- [x] get and save user timezone 
+- [x] setup activites DB
+- [x] get athlete activities
+- [x] record activities in database
+- [x] pull in 2026 performance
+- [x] Sync athlete data button 
 - [x] refesh token on pageload
 - [x] make it so that if you try to login but are already authed it redirects to the dashboard
 - [x] logout endpoint
