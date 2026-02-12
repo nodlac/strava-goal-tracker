@@ -32,13 +32,21 @@ docker run -d \
 ```
 
 # TODO: 
-- [ ] finish activity sync -- just need to be able to handle pagination and getting all activities.
-- [ ] refresh data on dashboard load
-- [ ] build out goals table
+- [ ] pull in metric preference "measurement_preference"
+- [ ] only save user data on initial login
+- [ ] setup webhook for activity creation so that you only need to sync if 
+- [ ] build out goals table and data fetch
 - [ ] build out set goals section
+- [ ] build out prefeernces
+    - [ ] add way to set measurement preference
+    - [ ] add sync strava profile button
+    - [ ] add way to manually set your timezone
+    - [ ] build delete my data function w/ confirm.
+    - [ ] build delete my account function w/ confirm.
 - [ ] build out dashboard page run calculations for where we should be at
-- [ ] add way to manually set your timezone
+- [ ] build webhook that will invalidate / delete user on app access revocation.
 
+- [x] finish activity sync -- just need to be able to handle pagination and getting all activities.
 - [x] get and save user timezone 
 - [x] setup activites DB
 - [x] get athlete activities
@@ -54,6 +62,7 @@ docker run -d \
         request to strava
 
 # LATER
-- [ ] setup golang-migrate to handle changes to tables
-- [ ] build delete my data function
 - [ ] create privacy policy and terms of use.  
+- [ ] expire users that haven't logged in with X months
+- [ ] setup golang-migrate to handle changes to tables
+

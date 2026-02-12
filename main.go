@@ -49,8 +49,9 @@ type StravaAuth struct {
 	AccessToken  string `json:"access_token"`
 	Timezone     string `json:"timezone"`
 	Athlete      struct {
-		ID         int64  `json:"id"`
-		ProfileImg string `json:"profile"`
+		ID              int64  `json:"id"`
+		ProfileImg      string `json:"profile"`
+		MeasurementUnit string `json:"measurement_preference"`
 	} `json:"athlete"`
 }
 
@@ -133,7 +134,8 @@ func initDB() {
         refresh_token TEXT,
         expires_at INTEGER,
         profile_img TEXT,
-        timezone TEXT);`
+        timezone TEXT,
+		measurement_unit TEXT);`
 	if _, err := db.Exec(usersQuery); err != nil {
 		panic(err)
 	}
@@ -170,14 +172,29 @@ func loadConfig() {
 
 func createUser(auth StravaAuth) error {
 	query := `
-    INSERT INTO users (strava_id, access_token, refresh_token, expires_at, profile_img) 
-    VALUES (?, ?, ?, ?, ?)
+    INSERT INTO users (
+		strava_id, 
+		access_token, 
+		refresh_token, 
+		expires_at, 
+		profile_img, 
+		measurement_unit
+	) 
+    VALUES (?, ?, ?, ?, ?, ?)
     ON CONFLICT(strava_id) DO UPDATE SET
         access_token = excluded.access_token,
         refresh_token = excluded.refresh_token,
         expires_at = excluded.expires_at,
-        profile_img = excluded.profile_img;`
-	_, err := db.Exec(query, auth.Athlete.ID, auth.AccessToken, auth.RefreshToken, auth.ExpiresAt, auth.Athlete.ProfileImg)
+        profile_img = excluded.profile_img,
+		measurement_unit = excluded.measurement_unit;`
+	_, err := db.Exec(
+		query,
+		auth.Athlete.ID,
+		auth.AccessToken,
+		auth.RefreshToken,
+		auth.ExpiresAt,
+		auth.Athlete.ProfileImg,
+		auth.Athlete.MeasurementUnit)
 	return err
 }
 
@@ -258,6 +275,24 @@ func updateSyncMeta(user StravaAuth) error {
 	return nil
 }
 
+func getUserActivityTotals(user StravaAuth) {
+	// sqlite>  SELECT  sum(distance)/1609.3, sum(elevation_gain)*3.28084 from user_activities where activity_type like '%Ride';
+	// 351.593115018952|23175.85376
+	// sqlite>  SELECT  sum(distance)/1609.3, sum(elevation_gain)*3.28084 from user_activities where activity_type like '%Run';
+	// 169.498850431865|23462.271092
+	// sqlite>  SELECT  sum(distance)/1609.3, sum(elevation_gain)*3.28084 from user_activities where activity_type like '%Swim';
+	// 5.65363822780091|0.0
+}
+
+func getUserActvitiesByMonth(user StravaAuth) {
+	// sqlite>  SELECT  sum(distance)/1609.3, sum(elevation_gain)*3.28084 from user_activities where activity_type like '%Ride';
+	// 351.593115018952|23175.85376
+	// sqlite>  SELECT  sum(distance)/1609.3, sum(elevation_gain)*3.28084 from user_activities where activity_type like '%Run';
+	// 169.498850431865|23462.271092
+	// sqlite>  SELECT  sum(distance)/1609.3, sum(elevation_gain)*3.28084 from user_activities where activity_type like '%Swim';
+	// 5.65363822780091|0.0
+}
+
 // --- Middleware ---
 
 func requireLogin(next http.Handler) http.Handler {
@@ -276,7 +311,8 @@ func requireLogin(next http.Handler) http.Handler {
 				refresh_token, 
 				access_token, 
 				profile_img, 
-				COALESCE(timezone, '') as timezone
+				COALESCE(timezone, '') as timezone,
+				measurement_unit
 			FROM users 
 			WHERE strava_id = ?`,
 			stravaID).Scan(
@@ -284,8 +320,8 @@ func requireLogin(next http.Handler) http.Handler {
 			&user.RefreshToken,
 			&user.AccessToken,
 			&user.Athlete.ProfileImg,
-			&user.Timezone)
-
+			&user.Timezone,
+			&user.Athlete.MeasurementUnit)
 		if err != nil {
 			slog.Error("Context hydration failed", "error", err)
 			http.Redirect(w, r, "/error", http.StatusFound)
@@ -381,6 +417,10 @@ func makeStravaGetRequest(
 
 	defer resp.Body.Close()
 
+	if resp.StatusCode == http.StatusTooManyRequests {
+		return nil, fmt.Errorf("Sorry. Strava has recieved too many requests from our app try syncing again later")
+	}
+
 	if resp.StatusCode == http.StatusUnauthorized {
 		if err = refreshAccessToken(user); err != nil {
 			return nil, err
@@ -414,14 +454,13 @@ func cleanStravaTimezone(raw string) string {
 	return cleanTZ
 }
 
-func syncActivities(user StravaAuth) error {
+func syncActivities(user StravaAuth) ([]Activity, error) {
 	var err error
 
 	timezone := user.Timezone
 	if timezone == "" {
 		timezone = "UTC"
 	}
-
 	loc, err := time.LoadLocation(timezone)
 	if err != nil {
 		slog.Warn("Invalid timezone, defaulting to UTC", "error", err)
@@ -438,11 +477,9 @@ func syncActivities(user StravaAuth) error {
 		&syncUnix)
 
 	var syncDate int64
-
 	if err != nil && err != sql.ErrNoRows {
-		return fmt.Errorf("database error: %w", err)
+		return nil, fmt.Errorf("database error: %w", err)
 	}
-
 	if syncUnix.Valid && syncUnix.Int64 > 0 {
 		// We found a previous sync!
 		syncDate = syncUnix.Int64
@@ -452,38 +489,42 @@ func syncActivities(user StravaAuth) error {
 		syncDate = time.Date(time.Now().Year(), time.January, 1, 0, 0, 0, 0, loc).AddDate(0, 0, -1).Unix()
 	}
 
+	var activities []Activity
 	formattedSyncDate := strconv.FormatInt(syncDate, 10)
+	activitiesPerPage := 200
+	page := 1
 	params := url.Values{}
 	params.Set("after", formattedSyncDate)
+	params.Set("per_page", strconv.Itoa(activitiesPerPage))
 
-	data, err := makeStravaGetRequest(user, "https://www.strava.com/api/v3/activities", params)
-	if err != nil {
-		slog.Error("Error getting activities", "error", err)
-		return err
-	}
+	for {
+		params.Set("page", strconv.Itoa(page))
 
-	var activities []Activity
-	err = json.Unmarshal(data, &activities)
-	if err != nil {
-		return err
-	}
-
-	if len(activities) == 0 {
-		return nil
-	}
-
-	// TODO: needs to flip through the pages if they exist and add to activity list
-	// TODO: need to save all activities we'll make the queries fast and performant later.
-
-	var lastActivityDate time.Time
-	counts := make(map[string]int)
-	for _, act := range activities {
-
-		counts[act.Timezone]++
-		if act.StartDate.After(lastActivityDate) {
-			lastActivityDate = act.StartDate
+		var currentBatch []Activity
+		data, err := makeStravaGetRequest(user, "https://www.strava.com/api/v3/activities", params)
+		if err != nil {
+			slog.Error("Error getting activities", "error", err)
+			return nil, err
 		}
 
+		err = json.Unmarshal(data, &currentBatch)
+		if err != nil {
+			return nil, err
+		}
+
+		activities = append(activities, currentBatch...)
+
+		if len(currentBatch) < activitiesPerPage {
+			break
+
+		}
+		page++
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	counts := make(map[string]int)
+	for _, act := range activities {
+		counts[act.Timezone]++
 	}
 
 	if user.Timezone == "" {
@@ -513,15 +554,15 @@ func syncActivities(user StravaAuth) error {
 
 	err = bulkSaveActivities(db, activities, user.Athlete.ID)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	err = updateSyncMeta(user)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	return nil
+	return activities, nil
 }
 
 // --- Handlers ---
@@ -565,6 +606,7 @@ func exchangeToken(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/error", http.StatusFound)
 		return
 	}
+	defer resp.Body.Close()
 
 	var auth StravaAuth
 	if err := json.NewDecoder(resp.Body).Decode(&auth); err != nil {
@@ -577,6 +619,10 @@ func exchangeToken(w http.ResponseWriter, r *http.Request) {
 		slog.Error("Invalid athlete auth")
 		http.Redirect(w, r, "/error", http.StatusFound)
 		return
+	}
+
+	if auth.Athlete.MeasurementUnit == "" {
+		auth.Athlete.MeasurementUnit = "feet"
 	}
 
 	if err := createUser(auth); err != nil {
@@ -610,11 +656,12 @@ func userDashboard(w http.ResponseWriter, r *http.Request) {
         </style>
     </head>
     <body>
-        <h1>2026 Goal Dashboard</h1>
-		<img src='%s'><br>
 		<div>
 			<a href='/logout'>Logout</a>
 		</div>
+        <h1>2026 Goal Dashboard</h1>
+		<img src='%s'><br>
+		<h2> Measurement Units: %s </h2> 
         <div id="sync-ui">
             <button hx-post="/sync" hx-target="#sync-ui" hx-indicator="#loading">
                 Sync Now
@@ -625,7 +672,7 @@ func userDashboard(w http.ResponseWriter, r *http.Request) {
     </html>`
 	w.Header().Set("Content-Type", "text/html")
 	fmt.Fprintf(w, html,
-		user.Athlete.ID, user.Athlete.ProfileImg)
+		user.Athlete.ProfileImg, user.Athlete.MeasurementUnit)
 
 	err := refreshAccessToken(user)
 	if err != nil {
@@ -668,23 +715,23 @@ func handleSyncActivities(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err := syncActivities(user)
+	activites, err := syncActivities(user)
 	if err != nil {
-	fmt.Fprintf(w, `
+		fmt.Fprintf(w, `
     <div>
         <button hx-post="/sync" hx-target="#sync-ui" hx-indicator="#loading">Sync Again</button>
         <p>Failed! -- %s</p>
     </div>
-	`, user.Timezone, err)
-	return
+	`, err)
+		return
 	}
 
 	fmt.Fprintf(w, `
     <div>
         <button hx-post="/sync" hx-target="#sync-ui" hx-indicator="#loading">Sync Again</button>
-        <p>Success! Timezone set to: <b>%s</b></p>
+        <p>Success! Syned %d activites at: <b>%s</b></p>
     </div>
-`, user.Timezone)
+`, len(activites), time.Now().Format("2006-01-02 15:04:05"))
 }
 
 // --- Main ---
