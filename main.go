@@ -25,6 +25,16 @@ import (
 
 // --- Types & Globals ---
 
+const (
+	MetersToYards = 1.09361
+	MetersToMiles = 0.000621371
+	MetersToFeet  = 3.28084
+
+	YardsToMeters = 0.9144
+	MilesToMeters = 1609.34
+	FeetToMeters  = 0.3048
+)
+
 type contextKey string
 
 const userContextKey contextKey = "user"
@@ -50,6 +60,7 @@ type StravaAuth struct {
 	Timezone     string `json:"timezone"`
 	Athlete      struct {
 		ID              int64  `json:"id"`
+		Username        string `json:"username"`
 		ProfileImg      string `json:"profile"`
 		MeasurementUnit string `json:"measurement_preference"`
 	} `json:"athlete"`
@@ -129,7 +140,8 @@ func initDB() {
 	usersQuery := `
     CREATE TABLE IF NOT EXISTS users (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        strava_id TEXT UNIQUE,
+        strava_id INTEGER UNIQUE,
+        strava_username TEXT,
         access_token TEXT,
         refresh_token TEXT,
         expires_at INTEGER,
@@ -155,6 +167,24 @@ func initDB() {
 		panic(err)
 	}
 
+	goalsQuery := `
+	   CREATE TABLE IF NOT EXISTS user_goals (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			user_strava_id INTEGER,
+			run_distance REAL,
+			run_elevation REAL,
+			run_total_time INTEGER,
+			ride_distance REAL,
+			ride_elevation REAL,
+			ride_total_time INTEGER,
+			swim_distance REAL,
+			swim_total_time INTEGER,
+			FOREIGN KEY(user_strava_id) REFERENCES users(strava_id)
+		);`
+	if _, err := db.Exec(goalsQuery); err != nil {
+		panic(err)
+	}
+
 	slog.Info("SQLite and Tables initialized")
 }
 
@@ -170,32 +200,51 @@ func loadConfig() {
 
 // --- Database Logic ---
 
-func createUser(auth StravaAuth) error {
+func updateOrCreateUser(auth StravaAuth) (bool, error) {
+	var exists bool
+	// Check if user exists
+	err := db.QueryRow("SELECT EXISTS(SELECT 1 FROM users WHERE strava_id = ?)", auth.Athlete.ID).Scan(&exists)
+	if err != nil {
+		return false, err
+	}
+
 	query := `
     INSERT INTO users (
 		strava_id, 
+		strava_username,
 		access_token, 
 		refresh_token, 
 		expires_at, 
 		profile_img, 
 		measurement_unit
 	) 
-    VALUES (?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(strava_id) DO UPDATE SET
         access_token = excluded.access_token,
         refresh_token = excluded.refresh_token,
         expires_at = excluded.expires_at,
         profile_img = excluded.profile_img,
-		measurement_unit = excluded.measurement_unit;`
-	_, err := db.Exec(
+		strava_username = excluded.strava_username;`
+	_, err = db.Exec(
 		query,
 		auth.Athlete.ID,
+		auth.Athlete.Username,
 		auth.AccessToken,
 		auth.RefreshToken,
 		auth.ExpiresAt,
 		auth.Athlete.ProfileImg,
 		auth.Athlete.MeasurementUnit)
-	return err
+	if err != nil {
+		return !exists, err
+	}
+
+	if !exists {
+		if _, err := syncActivities(auth); err != nil {
+			slog.Error("Failed to sync user activites on account create", "error", err)
+			return !exists, err
+		}
+	}
+	return !exists, nil
 }
 
 func bulkSaveActivities(db *sql.DB, activities []Activity, userStravaID int64) error {
@@ -239,7 +288,7 @@ func bulkSaveActivities(db *sql.DB, activities []Activity, userStravaID int64) e
 	if rows == 0 {
 		slog.Warn("no user found to update", "strava_id", userStravaID)
 	}
-	slog.Info("Added user activities", "strava_id", userStravaID)
+	slog.Info("Added user activities", "strave_id", userStravaID, "activity_count", len(activities))
 	return err
 }
 
@@ -308,6 +357,7 @@ func requireLogin(next http.Handler) http.Handler {
 		err := db.QueryRow(
 			`SELECT 
 				strava_id, 
+				strava_username, 
 				refresh_token, 
 				access_token, 
 				profile_img, 
@@ -317,6 +367,7 @@ func requireLogin(next http.Handler) http.Handler {
 			WHERE strava_id = ?`,
 			stravaID).Scan(
 			&user.Athlete.ID,
+			&user.Athlete.Username,
 			&user.RefreshToken,
 			&user.AccessToken,
 			&user.Athlete.ProfileImg,
@@ -455,6 +506,7 @@ func cleanStravaTimezone(raw string) string {
 }
 
 func syncActivities(user StravaAuth) ([]Activity, error) {
+
 	var err error
 
 	timezone := user.Timezone
@@ -625,17 +677,65 @@ func exchangeToken(w http.ResponseWriter, r *http.Request) {
 		auth.Athlete.MeasurementUnit = "feet"
 	}
 
-	if err := createUser(auth); err != nil {
+	isNew, err := updateOrCreateUser(auth)
+	if err != nil {
 		slog.Error("Failed to save user", "error", err)
 		http.Redirect(w, r, "/error", http.StatusFound)
 		return
 	}
 
 	sessionManager.Put(r.Context(), "user_id", auth.Athlete.ID)
+
+	if isNew {
+		http.Redirect(w, r, "/get-started", http.StatusFound)
+	}
+	
 	http.Redirect(w, r, "/user-dashboard", http.StatusFound)
 }
 
-func userDashboard(w http.ResponseWriter, r *http.Request) {
+func handleGetStarted(w http.ResponseWriter, r *http.Request){
+	user, ok := r.Context().Value(userContextKey).(StravaAuth)
+	if !ok {
+		slog.Error("Context fetch failed")
+		http.Error(w, "Internal Server Error", 500)
+		return
+	}
+
+	// TODO: decide if the best way is to just jump in or to 
+	// ask what sports they do first. Then we can create a list of goals based off that.
+
+	// TODO: setup goal setting template make re-useable so that I can use this page to be the goal update page as well.
+	html := `
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+        <style>
+            .htmx-indicator { display: none; }
+            .htmx-request .htmx-indicator { display: block; }
+            .htmx-request.btn { display: none; }
+        </style>
+    </head>
+    <body>
+        <h1>Hi %s!</h1>
+		<img src='%s'><br>
+		<h2> Measurement Units: %s </h2> 
+		<h2> Timezone: %s </h2> 
+        <div id="sync-ui">
+            <button hx-post="/sync" hx-target="#sync-ui" hx-indicator="#loading">
+                Sync Now
+            </button>
+            <span id="loading" class="htmx-indicator">Syncing...</span>
+        </div>
+    </body>
+    </html>`
+	w.Header().Set("Content-Type", "text/html")
+	fmt.Fprintf(w, html,
+		user.Athlete.Username, user.Athlete.ProfileImg, user.Athlete.MeasurementUnit, user.Timezone)
+
+}
+
+func handleUserDashboard(w http.ResponseWriter, r *http.Request) {
 
 	user, ok := r.Context().Value(userContextKey).(StravaAuth)
 	if !ok {
@@ -659,9 +759,10 @@ func userDashboard(w http.ResponseWriter, r *http.Request) {
 		<div>
 			<a href='/logout'>Logout</a>
 		</div>
-        <h1>2026 Goal Dashboard</h1>
+        <h1>%s's 2026 Goal Dashboard</h1>
 		<img src='%s'><br>
 		<h2> Measurement Units: %s </h2> 
+		<h2> Timezone: %s </h2> 
         <div id="sync-ui">
             <button hx-post="/sync" hx-target="#sync-ui" hx-indicator="#loading">
                 Sync Now
@@ -672,7 +773,7 @@ func userDashboard(w http.ResponseWriter, r *http.Request) {
     </html>`
 	w.Header().Set("Content-Type", "text/html")
 	fmt.Fprintf(w, html,
-		user.Athlete.ProfileImg, user.Athlete.MeasurementUnit)
+		user.Athlete.Username, user.Athlete.ProfileImg, user.Athlete.MeasurementUnit, user.Timezone)
 
 	err := refreshAccessToken(user)
 	if err != nil {
@@ -706,6 +807,7 @@ func errorPage(w http.ResponseWriter, r *http.Request) {
 }
 
 // --- HTMX Handlers ---
+
 func handleSyncActivities(w http.ResponseWriter, r *http.Request) {
 
 	user, ok := r.Context().Value(userContextKey).(StravaAuth)
@@ -753,7 +855,8 @@ func main() {
 	mux.HandleFunc("/error", errorPage)
 
 	// Protected
-	mux.Handle("/user-dashboard", requireLogin(http.HandlerFunc(userDashboard)))
+	mux.Handle("/user-dashboard", requireLogin(http.HandlerFunc(handleUserDashboard)))
+	mux.Handle("/get-started", requireLogin(http.HandlerFunc(handleGetStarted)))
 	mux.Handle("/sync", requireLogin(http.HandlerFunc(handleSyncActivities)))
 
 	slog.Info("Server starting on :8090")
