@@ -36,9 +36,8 @@ docker run -d \
 - [x] only save user data on initial login
 - [x] only sync user activities on initial login after that it should be handled by webhooks
 - [ ] build out set goals section
-    - [ ] build goals table
-        - duration, elevation, time
-            - no elevation for swim :) 
+    - [/] build goals table
+    - [ ] build out list of sports insertion query -- Support aggragate virtual
     - [ ] build goals form
     - [ ] convert all data into meters so that data is stored uniformly. 
         (Will result in extra calculations but it'll be worth it);
@@ -54,6 +53,7 @@ docker run -d \
 - [ ] build out dashboard page run calculations for where we should be at
 - [ ] build webhook that will invalidate / delete user on app access revocation.
 - [ ] setup webhook for activity creation so that you only need to sync if 
+
 
 - [x] finish activity sync -- just need to be able to handle pagination and getting all activities.
 - [x] get and save user timezone 
@@ -75,4 +75,4 @@ docker run -d \
 - [ ] expire users that haven't logged in with X months
 - [ ] setup golang-migrate to handle changes to tables
 - [ ] add ability to sync previous years and display previous yekkkk21kar data.
-
+- [ ] add rate limits

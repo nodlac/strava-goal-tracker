@@ -147,8 +147,38 @@ func initDB() {
         expires_at INTEGER,
         profile_img TEXT,
         timezone TEXT,
-		measurement_unit TEXT);`
+		measurement_unit TEXT,
+		tracked_sports ARRAY FORIEGN KEYS);`
 	if _, err := db.Exec(usersQuery); err != nil {
+		panic(err)
+	}
+
+	// TODO: init sports by saving the default values might make sense to wrap in a migration instead
+	sportsQuery := `
+    CREATE TABLE IF NOT EXISTS sports (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+		name TEXT,
+		strava_sport_id TEXT,
+		has_elevation BOOLEAN,
+		image_URL TEXT
+	);`
+	if _, err := db.Exec(sportsQuery); err != nil {
+		panic(err)
+	}
+
+	// TODO:  is REAL best?
+	goalsQuery := `
+    CREATE TABLE IF NOT EXISTS goals (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+		user_strava_id INTEGER,
+        sport_id INTEGER,
+		elevation_goal REAL,
+		distance_goal REAL,
+		duration_goal REAL,
+		FOREIGN KEY(user_strava_id) REFERENCES users(strava_id)
+		FOREIGN KEY(sport_id) REFERENCES sports(id)
+		);`
+	if _, err := db.Exec(goalsQuery); err != nil {
 		panic(err)
 	}
 
@@ -161,31 +191,12 @@ func initDB() {
 			start_date INTEGER,
 			distance REAL,
 			elevation_gain REAL,
+			duration REAL,
 			FOREIGN KEY(user_strava_id) REFERENCES users(strava_id)
 		);`
 	if _, err := db.Exec(acitiviesQuery); err != nil {
 		panic(err)
 	}
-
-	goalsQuery := `
-	   CREATE TABLE IF NOT EXISTS user_goals (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			user_strava_id INTEGER,
-			run_distance REAL,
-			run_elevation REAL,
-			run_total_time INTEGER,
-			ride_distance REAL,
-			ride_elevation REAL,
-			ride_total_time INTEGER,
-			swim_distance REAL,
-			swim_total_time INTEGER,
-			FOREIGN KEY(user_strava_id) REFERENCES users(strava_id)
-		);`
-	if _, err := db.Exec(goalsQuery); err != nil {
-		panic(err)
-	}
-
-	slog.Info("SQLite and Tables initialized")
 }
 
 func loadConfig() {
@@ -689,11 +700,11 @@ func exchangeToken(w http.ResponseWriter, r *http.Request) {
 	if isNew {
 		http.Redirect(w, r, "/get-started", http.StatusFound)
 	}
-	
+
 	http.Redirect(w, r, "/user-dashboard", http.StatusFound)
 }
 
-func handleGetStarted(w http.ResponseWriter, r *http.Request){
+func handleGetStarted(w http.ResponseWriter, r *http.Request) {
 	user, ok := r.Context().Value(userContextKey).(StravaAuth)
 	if !ok {
 		slog.Error("Context fetch failed")
@@ -701,7 +712,7 @@ func handleGetStarted(w http.ResponseWriter, r *http.Request){
 		return
 	}
 
-	// TODO: decide if the best way is to just jump in or to 
+	// TODO: decide if the best way is to just jump in or to
 	// ask what sports they do first. Then we can create a list of goals based off that.
 
 	// TODO: setup goal setting template make re-useable so that I can use this page to be the goal update page as well.
@@ -718,12 +729,16 @@ func handleGetStarted(w http.ResponseWriter, r *http.Request){
     </head>
     <body>
         <h1>Hi %s!</h1>
+		<h2>First some boring setup and then we'll get to the good stuff, sweet nerdy data visualizations.</h2>
+		<div class="onboard-questions"
+			<h3>Imperial or Metric?</h3>
+			<input> Measurement Units: %s </h2> 
+		</div>
 		<img src='%s'><br>
-		<h2> Measurement Units: %s </h2> 
 		<h2> Timezone: %s </h2> 
         <div id="sync-ui">
             <button hx-post="/sync" hx-target="#sync-ui" hx-indicator="#loading">
-                Sync Now
+                Save Goals
             </button>
             <span id="loading" class="htmx-indicator">Syncing...</span>
         </div>
