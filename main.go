@@ -84,6 +84,32 @@ func (s *StravaRefreshResponse) IsValid() bool {
 	return s.AccessToken != "" && s.ExpiresAt != 0 && s.RefreshToken != ""
 }
 
+type Sport struct {
+	ID            int64          `json:"id"`
+	Name          string         `json:"name"`
+	StraveSportId string         `json:"strava_sport_id"`
+	ImageUrl      sql.NullString `json:"image_url"`
+	HasElevation  bool           `json:"has_elevation"`
+}
+
+type Goal struct {
+	ID            int64           `json:"id"`
+	SportId       int64           `json:"sport_id"`
+	Year          int64           `json:"year"`
+	UserStravaId  int64           `json:"user_strava_id"`
+	ElevationGoal sql.NullFloat64 `json:"elevation_goal"`
+	DistanceGoal  sql.NullFloat64 `json:"distance_goal"`
+	DurationGoal  sql.NullFloat64 `json:"duration_goal"`
+}
+
+type GoalDisplay struct {
+	SportName     string
+	HasElevation  bool
+	ElevationGoal sql.NullFloat64
+	DistanceGoal  sql.NullFloat64
+	DurationGoal  sql.NullFloat64
+}
+
 type Activity struct {
 	ID        int64     `json:"id"`
 	Name      string    `json:"name"`
@@ -153,11 +179,10 @@ func initDB() {
 		panic(err)
 	}
 
-	// TODO: init sports by saving the default values might make sense to wrap in a migration instead
 	sportsQuery := `
     CREATE TABLE IF NOT EXISTS sports (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-		name TEXT,
+		name TEXT UNIQUE,
 		strava_sport_id TEXT,
 		has_elevation BOOLEAN,
 		image_URL TEXT
@@ -166,17 +191,29 @@ func initDB() {
 		panic(err)
 	}
 
+	insertDefaultsQuery := `
+			INSERT OR IGNORE INTO sports (name, strava_sport_id, has_elevation) VALUES 
+			('Cycling', 'Ride', 1),
+			('Running', 'Run', 1),
+			('Swimming', 'Swim', 0);`
+	_, err = db.Exec(insertDefaultsQuery)
+	if err != nil {
+		log.Fatalf("Failed to seed default sports: %v", err)
+	}
+
 	// TODO:  is REAL best?
 	goalsQuery := `
     CREATE TABLE IF NOT EXISTS goals (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
+        year INTEGER,
 		user_strava_id INTEGER,
         sport_id INTEGER,
 		elevation_goal REAL,
 		distance_goal REAL,
-		duration_goal REAL,
+		duration_goal INTEGER,
 		FOREIGN KEY(user_strava_id) REFERENCES users(strava_id)
 		FOREIGN KEY(sport_id) REFERENCES sports(id)
+		UNIQUE(year, user_strava_id, sport_id)
 		);`
 	if _, err := db.Exec(goalsQuery); err != nil {
 		panic(err)
@@ -191,7 +228,7 @@ func initDB() {
 			start_date INTEGER,
 			distance REAL,
 			elevation_gain REAL,
-			duration REAL,
+			duration INTEGER,
 			FOREIGN KEY(user_strava_id) REFERENCES users(strava_id)
 		);`
 	if _, err := db.Exec(acitiviesQuery); err != nil {
@@ -351,6 +388,95 @@ func getUserActvitiesByMonth(user StravaAuth) {
 	// 169.498850431865|23462.271092
 	// sqlite>  SELECT  sum(distance)/1609.3, sum(elevation_gain)*3.28084 from user_activities where activity_type like '%Swim';
 	// 5.65363822780091|0.0
+}
+
+func fetchSports() ([]Sport, error) {
+	var sports []Sport
+	rows, err := db.Query(
+		`SELECT 
+			id,
+			name,
+			strava_sport_id,
+			has_elevation,
+			image_URL
+		FROM sport`)
+	if err != nil {
+		slog.Error("Failed to Fetch Goals", "error", err)
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var s Sport
+		err := rows.Scan(
+			&s.ID,
+			&s.Name,
+			&s.StraveSportId,
+			&s.HasElevation,
+			&s.ImageUrl,
+		)
+
+		if err != nil {
+			slog.Error("Failed to unmarshall Sport", "error", err)
+			return nil, err
+		}
+		sports = append(sports, s)
+	}
+
+	return sports, nil
+}
+
+func fetchUserGoals(user StravaAuth, year int64) ([]Goal, error) {
+	var goals []Goal
+	rows, err := db.Query(
+		`SELECT 
+			id,
+			year,
+			user_strava_id,
+			sport_id,
+			elevation_goal,
+			distance_goal,
+			duration_goal
+		FROM goals 
+		WHERE user_strava_id = ?
+			AND year = ?`,
+		user.Athlete.ID, year)
+	if err != nil {
+		slog.Error("Failed to Fetch Goals", "error", err)
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var g Goal
+		err := rows.Scan(
+			&g.ID,
+			&g.Year,
+			&g.UserStravaId,
+			&g.SportId,
+			&g.ElevationGoal,
+			&g.DistanceGoal,
+			&g.DurationGoal,
+		)
+
+		if err != nil {
+			slog.Error("Failed to unmarshall Goal", "error", err)
+			return nil, err
+		}
+		goals = append(goals, g)
+	}
+
+	return goals, nil
+}
+
+func getGoalDisplay(user StravaAuth, year int64) (string, error) {
+	availableSports, err := fetchSports()
+	if err != nil {
+		return "", err
+	}
+
+	userGoals, err := fetchUserGoals(user, year)
+
 }
 
 // --- Middleware ---
@@ -712,6 +838,9 @@ func handleGetStarted(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	goalForm := getGoalForm(user)
+
+	// TODO: setup standard head and load HTMX there
 	// TODO: decide if the best way is to just jump in or to
 	// ask what sports they do first. Then we can create a list of goals based off that.
 
@@ -734,8 +863,6 @@ func handleGetStarted(w http.ResponseWriter, r *http.Request) {
 			<h3>Imperial or Metric?</h3>
 			<input> Measurement Units: %s </h2> 
 		</div>
-		<img src='%s'><br>
-		<h2> Timezone: %s </h2> 
         <div id="sync-ui">
             <button hx-post="/sync" hx-target="#sync-ui" hx-indicator="#loading">
                 Save Goals
@@ -746,7 +873,7 @@ func handleGetStarted(w http.ResponseWriter, r *http.Request) {
     </html>`
 	w.Header().Set("Content-Type", "text/html")
 	fmt.Fprintf(w, html,
-		user.Athlete.Username, user.Athlete.ProfileImg, user.Athlete.MeasurementUnit, user.Timezone)
+		user.Athlete.Username)
 
 }
 

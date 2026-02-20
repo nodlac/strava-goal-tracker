@@ -36,12 +36,14 @@ docker run -d \
 - [x] only save user data on initial login
 - [x] only sync user activities on initial login after that it should be handled by webhooks
 - [ ] build out set goals section
-    - [/] build goals table
-    - [ ] build out list of sports insertion query -- Support aggragate virtual
-    - [ ] build goals form
+    - [x] build goals table
+    - [x] build out list of sports insertion query -- Support aggragate virtual
+    - [ ] build out display struct
+    - [ ] build goals form 
+    - [ ] handle units
     - [ ] convert all data into meters so that data is stored uniformly. 
         (Will result in extra calculations but it'll be worth it);
-- [ ] build out goals table and data population
+- [ ] build out dashboard page run calculations for where we should be at
 - [ ] build out prefeernces
     - [ ] add way to set measurement preference
     - [ ] add sync strava profile button
@@ -50,11 +52,17 @@ docker run -d \
     - [ ] build delete my account function w/ confirm.
     - [ ] remove sync data button and replace with delete data and re-sync 
             (add warning that this is only if data has become corrupted or if data is missing)
-- [ ] build out dashboard page run calculations for where we should be at
 - [ ] build webhook that will invalidate / delete user on app access revocation.
 - [ ] setup webhook for activity creation so that you only need to sync if 
 
+# LATER
+- [ ] create privacy policy and terms of use.  
+- [ ] expire users that haven't logged in with X months
+- [ ] setup golang-migrate to handle changes to tables
+- [ ] add ability to sync previous years and display previous yekkkk21kar data.
+- [ ] add rate limits
 
+# Done
 - [x] finish activity sync -- just need to be able to handle pagination and getting all activities.
 - [x] get and save user timezone 
 - [x] setup activites DB
@@ -70,9 +78,3 @@ docker run -d \
 - [x] setup key refresh script and fire when requests is authed but key is invalid and making a 
         request to strava
 
-# LATER
-- [ ] create privacy policy and terms of use.  
-- [ ] expire users that haven't logged in with X months
-- [ ] setup golang-migrate to handle changes to tables
-- [ ] add ability to sync previous years and display previous yekkkk21kar data.
-- [ ] add rate limits
