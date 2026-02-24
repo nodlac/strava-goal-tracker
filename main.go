@@ -103,6 +103,7 @@ type Goal struct {
 }
 
 type GoalDisplay struct {
+	Year		  int64
 	SportName     string
 	HasElevation  bool
 	ElevationGoal sql.NullFloat64
@@ -469,14 +470,39 @@ func fetchUserGoals(user StravaAuth, year int64) ([]Goal, error) {
 	return goals, nil
 }
 
-func getGoalDisplay(user StravaAuth, year int64) (string, error) {
+func getSetGoalDisplay(user StravaAuth, year int64) ([]GoalDisplay, error) {
 	availableSports, err := fetchSports()
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
 	userGoals, err := fetchUserGoals(user, year)
 
+
+	goalsBySport := make(map[int64]Goal)
+	for _, g := range userGoals {
+		goalsBySport[g.SportId] = g
+	}
+
+	goals := make([]GoalDisplay, len(availableSports))
+	for i, sport := range availableSports {
+		goal, hasGoal := goalsBySport[sport.ID]
+
+		goals[i] = GoalDisplay{
+			Year: year,
+			SportName: sport.Name,
+			HasElevation: sport.HasElevation,
+		}
+
+		if hasGoal {
+			goals[i].ElevationGoal = goal.ElevationGoal
+			goals[i].DistanceGoal = goal.DistanceGoal
+			goals[i].DurationGoal = goal.DurationGoal
+		}
+
+	}
+
+	return goals, nil
 }
 
 // --- Middleware ---
@@ -838,7 +864,7 @@ func handleGetStarted(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	goalForm := getGoalForm(user)
+	// goalForm := getGoalForm(user)
 
 	// TODO: setup standard head and load HTMX there
 	// TODO: decide if the best way is to just jump in or to
