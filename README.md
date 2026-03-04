@@ -32,13 +32,8 @@ docker run -d \
 ```
 
 # TODO: 
-- [/] Move handlers to templates -- will likely need to refactor later.
-- [/] Make it so you can add arbitrary goals. IE target date ... sport type
-        - I set te table up I just need to make it so that there is a way to set goals. 
-            - I like the idea of having a list.
-     - fetch goals,
-    - [ ] build form 
-    - How do I make it so you can add another row dynamically
+- [x] Make it so you can add arbitrary goals. IE target date ... sport type
+    - [x] build form 
 - [ ] setup standard head and load HTMX there
 - [ ] Set up tmpl and all the html pages. It'll take a bit but it's time. 
        bare-bones for now but then build it more complex
@@ -88,3 +83,4 @@ docker run -d \
     - [x] build goals table
     - [x] build out list of sports insertion query -- Support aggragate virtual
     - [x] build out display struct
+- [x] Move handlers to templates -- will likely need to refactor later.
