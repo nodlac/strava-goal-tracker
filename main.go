@@ -848,13 +848,18 @@ func handleGetStarted(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		slog.Error("Error getting goals", "error", err)
 	}
-	// goalForm := getGoalForm(user)
+
+	sports, err := fetchSports()
+	if err != nil {
+		slog.Error("Error getting sports", "error", err)
+	}
 
 	// TODO: setup goal setting template make re-useable so that I can use this page to be the goal update page as well.
 	tmpl.ExecuteTemplate(w, "get-started.html", map[string]interface{}{
 		"Username":        user.Athlete.Username,
 		"MeasurementUnit": user.Athlete.MeasurementUnit,
 		"Goals":           goals,
+		"Sports":          sports,
 	})
 }
 
@@ -873,10 +878,10 @@ func handleUserDashboard(w http.ResponseWriter, r *http.Request) {
 	}
 
 	tmpl.ExecuteTemplate(w, "user-dashbaord.html", map[string]interface{}{
-		"Username":        user.Athlete.Username,
-		"ProfileImg":      user.Athlete.ProfileImg,
+		"Username":         user.Athlete.Username,
+		"ProfileImg":       user.Athlete.ProfileImg,
 		"MeasurementLabel": measurementLabel,
-		"Timezone":        user.Timezone,
+		"Timezone":         user.Timezone,
 	})
 
 	err := refreshAccessToken(user)
