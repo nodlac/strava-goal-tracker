@@ -32,6 +32,8 @@ docker run -d \
 ```
 
 # TODO: 
+- [ ] add way to edit / delete goals from goal select page
+- [ ] handle raw data being sent up (also need to setup endpoint to capture goals and setup way to 
 - [x] Make it so you can add arbitrary goals. IE target date ... sport type
     - [x] build form 
 - [ ] setup standard head and load HTMX there

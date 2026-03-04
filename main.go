@@ -413,7 +413,7 @@ func fetchSports() ([]Sport, error) {
 			image_URL
 		FROM sports`)
 	if err != nil {
-		slog.Error("Failed to Fetch Goals", "error", err)
+		slog.Error("Failed to Fetch Sports", "error", err)
 		return nil, err
 	}
 	defer rows.Close()
@@ -452,7 +452,8 @@ func fetchUserGoals(user StravaAuth) ([]Goal, error) {
 			duration_goal
 		FROM goals 
 		WHERE user_strava_id = ?
-			AND target_date > datetime('now');`,
+			AND target_date > datetime('now')
+		ORDER BY target_date DESC;`,
 		user.Athlete.ID)
 	if err != nil {
 		slog.Error("Failed to Fetch Goals", "error", err)
