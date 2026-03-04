@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"html/template"
 	"io"
 	"log"
 	"log/slog"
@@ -93,22 +94,24 @@ type Sport struct {
 }
 
 type Goal struct {
-	ID            int64           `json:"id"`
-	SportId       int64           `json:"sport_id"`
-	Year          int64           `json:"year"`
-	UserStravaId  int64           `json:"user_strava_id"`
-	ElevationGoal sql.NullFloat64 `json:"elevation_goal"`
-	DistanceGoal  sql.NullFloat64 `json:"distance_goal"`
-	DurationGoal  sql.NullFloat64 `json:"duration_goal"`
+	ID             int64           `json:"id"`
+	SportId        int64           `json:"sport_id"`
+	TargetDate     time.Time       `json:"target_date"`
+	IncludeVirtual bool            `json:"include_virtual"`
+	UserStravaId   int64           `json:"user_strava_id"`
+	ElevationGoal  sql.NullFloat64 `json:"elevation_goal"`
+	DistanceGoal   sql.NullFloat64 `json:"distance_goal"`
+	DurationGoal   sql.NullFloat64 `json:"duration_goal"`
 }
 
 type GoalDisplay struct {
-	Year		  int64
-	SportName     string
-	HasElevation  bool
-	ElevationGoal sql.NullFloat64
-	DistanceGoal  sql.NullFloat64
-	DurationGoal  sql.NullFloat64
+	TargetDate     time.Time
+	IncludeVirtual bool
+	SportName      string
+	HasElevation   bool
+	ElevationGoal  sql.NullFloat64
+	DistanceGoal   sql.NullFloat64
+	DurationGoal   sql.NullFloat64
 }
 
 type Activity struct {
@@ -120,6 +123,14 @@ type Activity struct {
 	Type      string    `json:"type"`
 	StartDate time.Time `json:"start_date"`
 	Timezone  string    `json:"timezone"`
+}
+
+// Templates
+
+var tmpl *template.Template
+
+func init() {
+	tmpl = template.Must(template.ParseGlob("templates/*.html"))
 }
 
 // --- Initialization ---
@@ -202,11 +213,11 @@ func initDB() {
 		log.Fatalf("Failed to seed default sports: %v", err)
 	}
 
-	// TODO:  is REAL best?
 	goalsQuery := `
     CREATE TABLE IF NOT EXISTS goals (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        year INTEGER,
+		target_date DATE,
+        include_virtual BOOLEAN,
 		user_strava_id INTEGER,
         sport_id INTEGER,
 		elevation_goal REAL,
@@ -214,7 +225,7 @@ func initDB() {
 		duration_goal INTEGER,
 		FOREIGN KEY(user_strava_id) REFERENCES users(strava_id)
 		FOREIGN KEY(sport_id) REFERENCES sports(id)
-		UNIQUE(year, user_strava_id, sport_id)
+		UNIQUE(target_date, user_strava_id, sport_id, include_virtual)
 		);`
 	if _, err := db.Exec(goalsQuery); err != nil {
 		panic(err)
@@ -400,7 +411,7 @@ func fetchSports() ([]Sport, error) {
 			strava_sport_id,
 			has_elevation,
 			image_URL
-		FROM sport`)
+		FROM sports`)
 	if err != nil {
 		slog.Error("Failed to Fetch Goals", "error", err)
 		return nil, err
@@ -427,12 +438,13 @@ func fetchSports() ([]Sport, error) {
 	return sports, nil
 }
 
-func fetchUserGoals(user StravaAuth, year int64) ([]Goal, error) {
+func fetchUserGoals(user StravaAuth) ([]Goal, error) {
 	var goals []Goal
 	rows, err := db.Query(
 		`SELECT 
 			id,
-			year,
+			target_date,
+			include_virtual,
 			user_strava_id,
 			sport_id,
 			elevation_goal,
@@ -440,8 +452,8 @@ func fetchUserGoals(user StravaAuth, year int64) ([]Goal, error) {
 			duration_goal
 		FROM goals 
 		WHERE user_strava_id = ?
-			AND year = ?`,
-		user.Athlete.ID, year)
+			AND target_date > datetime('now');`,
+		user.Athlete.ID)
 	if err != nil {
 		slog.Error("Failed to Fetch Goals", "error", err)
 		return nil, err
@@ -452,7 +464,8 @@ func fetchUserGoals(user StravaAuth, year int64) ([]Goal, error) {
 		var g Goal
 		err := rows.Scan(
 			&g.ID,
-			&g.Year,
+			&g.TargetDate,
+			&g.IncludeVirtual,
 			&g.UserStravaId,
 			&g.SportId,
 			&g.ElevationGoal,
@@ -465,41 +478,6 @@ func fetchUserGoals(user StravaAuth, year int64) ([]Goal, error) {
 			return nil, err
 		}
 		goals = append(goals, g)
-	}
-
-	return goals, nil
-}
-
-func getSetGoalDisplay(user StravaAuth, year int64) ([]GoalDisplay, error) {
-	availableSports, err := fetchSports()
-	if err != nil {
-		return nil, err
-	}
-
-	userGoals, err := fetchUserGoals(user, year)
-
-
-	goalsBySport := make(map[int64]Goal)
-	for _, g := range userGoals {
-		goalsBySport[g.SportId] = g
-	}
-
-	goals := make([]GoalDisplay, len(availableSports))
-	for i, sport := range availableSports {
-		goal, hasGoal := goalsBySport[sport.ID]
-
-		goals[i] = GoalDisplay{
-			Year: year,
-			SportName: sport.Name,
-			HasElevation: sport.HasElevation,
-		}
-
-		if hasGoal {
-			goals[i].ElevationGoal = goal.ElevationGoal
-			goals[i].DistanceGoal = goal.DistanceGoal
-			goals[i].DurationGoal = goal.DurationGoal
-		}
-
 	}
 
 	return goals, nil
@@ -537,6 +515,8 @@ func requireLogin(next http.Handler) http.Handler {
 			&user.Timezone,
 			&user.Athlete.MeasurementUnit)
 		if err != nil {
+			sessionManager.Destroy(r.Context())
+			http.Redirect(w, r, "/login", http.StatusFound)
 			slog.Error("Context hydration failed", "error", err)
 			http.Redirect(w, r, "/error", http.StatusFound)
 			return
@@ -864,43 +844,18 @@ func handleGetStarted(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	goals, err := fetchUserGoals(user)
+	if err != nil {
+		slog.Error("Error getting goals", "error", err)
+	}
 	// goalForm := getGoalForm(user)
 
-	// TODO: setup standard head and load HTMX there
-	// TODO: decide if the best way is to just jump in or to
-	// ask what sports they do first. Then we can create a list of goals based off that.
-
 	// TODO: setup goal setting template make re-useable so that I can use this page to be the goal update page as well.
-	html := `
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <script src="https://unpkg.com/htmx.org@1.9.10"></script>
-        <style>
-            .htmx-indicator { display: none; }
-            .htmx-request .htmx-indicator { display: block; }
-            .htmx-request.btn { display: none; }
-        </style>
-    </head>
-    <body>
-        <h1>Hi %s!</h1>
-		<h2>First some boring setup and then we'll get to the good stuff, sweet nerdy data visualizations.</h2>
-		<div class="onboard-questions"
-			<h3>Imperial or Metric?</h3>
-			<input> Measurement Units: %s </h2> 
-		</div>
-        <div id="sync-ui">
-            <button hx-post="/sync" hx-target="#sync-ui" hx-indicator="#loading">
-                Save Goals
-            </button>
-            <span id="loading" class="htmx-indicator">Syncing...</span>
-        </div>
-    </body>
-    </html>`
-	w.Header().Set("Content-Type", "text/html")
-	fmt.Fprintf(w, html,
-		user.Athlete.Username)
-
+	tmpl.ExecuteTemplate(w, "get-started.html", map[string]interface{}{
+		"Username":        user.Athlete.Username,
+		"MeasurementUnit": user.Athlete.MeasurementUnit,
+		"Goals":           goals,
+	})
 }
 
 func handleUserDashboard(w http.ResponseWriter, r *http.Request) {
@@ -912,36 +867,17 @@ func handleUserDashboard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	html := `
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <script src="https://unpkg.com/htmx.org@1.9.10"></script>
-        <style>
-            .htmx-indicator { display: none; }
-            .htmx-request .htmx-indicator { display: block; }
-            .htmx-request.btn { display: none; }
-        </style>
-    </head>
-    <body>
-		<div>
-			<a href='/logout'>Logout</a>
-		</div>
-        <h1>%s's 2026 Goal Dashboard</h1>
-		<img src='%s'><br>
-		<h2> Measurement Units: %s </h2> 
-		<h2> Timezone: %s </h2> 
-        <div id="sync-ui">
-            <button hx-post="/sync" hx-target="#sync-ui" hx-indicator="#loading">
-                Sync Now
-            </button>
-            <span id="loading" class="htmx-indicator">Syncing...</span>
-        </div>
-    </body>
-    </html>`
-	w.Header().Set("Content-Type", "text/html")
-	fmt.Fprintf(w, html,
-		user.Athlete.Username, user.Athlete.ProfileImg, user.Athlete.MeasurementUnit, user.Timezone)
+	measurementLabel := "Metric"
+	if user.Athlete.MeasurementUnit == "feet" {
+		measurementLabel = "Imperial"
+	}
+
+	tmpl.ExecuteTemplate(w, "user-dashbaord.html", map[string]interface{}{
+		"Username":        user.Athlete.Username,
+		"ProfileImg":      user.Athlete.ProfileImg,
+		"MeasurementLabel": measurementLabel,
+		"Timezone":        user.Timezone,
+	})
 
 	err := refreshAccessToken(user)
 	if err != nil {

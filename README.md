@@ -32,14 +32,19 @@ docker run -d \
 ```
 
 # TODO: 
-- [x] pull in metric preference "measurement_preference"
-- [x] only save user data on initial login
-- [x] only sync user activities on initial login after that it should be handled by webhooks
+- [/] Move handlers to templates -- will likely need to refactor later.
+- [/] Make it so you can add arbitrary goals. IE target date ... sport type
+        - I set te table up I just need to make it so that there is a way to set goals. 
+            - I like the idea of having a list.
+     - fetch goals,
+    - [ ] build form 
+    - How do I make it so you can add another row dynamically
+- [ ] setup standard head and load HTMX there
+- [ ] Set up tmpl and all the html pages. It'll take a bit but it's time. 
+       bare-bones for now but then build it more complex
+- [ ] handle error use logged in and account gets deleted should drop the valkey
 - [ ] build out set goals section
-    - [x] build goals table
-    - [x] build out list of sports insertion query -- Support aggragate virtual
-    - [ ] build out display struct
-    - [ ] build goals form 
+    - [/] build goals form  (A little blocked here because the template is so bad.
     - [ ] handle units
     - [ ] convert all data into meters so that data is stored uniformly. 
         (Will result in extra calculations but it'll be worth it);
@@ -77,4 +82,9 @@ docker run -d \
 - [x] create dev startup script that setups up docker and runs air for simplicity
 - [x] setup key refresh script and fire when requests is authed but key is invalid and making a 
         request to strava
-
+- [x] pull in metric preference "measurement_preference"
+- [x] only save user data on initial login
+- [x] only sync user activities on initial login after that it should be handled by webhooks
+    - [x] build goals table
+    - [x] build out list of sports insertion query -- Support aggragate virtual
+    - [x] build out display struct

@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+    <style>
+        .htmx-indicator {
+            display: none;
+        }
+
+        .htmx-request .htmx-indicator {
+            display: block;
+        }
+
+        .htmx-request.btn {
+            display: none;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>Hi {{.Username}}!</h1>
+    <!-- can I use a if here? -->
+    {{ if len(.goals) > 0}}
+    <h2>Your Current Goals</h2>
+    <div class="current-goals">
+
+        {{range .Goals}}
+
+        {{else}}
+        p
+        {{end}}
+    </div>
+    {{else}}
+    <h2> Let's set your first goal</h2>
+    <p>Select the activity type, set your target date and set your goal. You can set a distance, elevation or duration
+        goal or all three.</p>
+    {{end}}
+    <form>
+        <!-- setup form -->
+    </form>
+    <div id="sync-ui">
+        <button hx-post="/sync" hx-target="#sync-ui" hx-indicator="#loading">
+            Save Goals
+        </button>
+        <span id="loading" class="htmx-indicator">Syncing...</span>
+    </div>
+    <p class="measurement-notice> We detected that you use {{.MeasurementUnit}} to measure your workouts. You can change this in the profile settings.</p> 
+    </body>
+    </html>
+    <script>
+
+    </script>
