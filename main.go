@@ -770,7 +770,7 @@ func landing(w http.ResponseWriter, r *http.Request) {
 
 func goLogin(w http.ResponseWriter, r *http.Request) {
 	if sessionManager.Exists(r.Context(), "user_id") {
-		http.Redirect(w, r, "/user-dashboard", http.StatusSeeOther)
+		http.Redirect(w, r, "/dashboard", http.StatusSeeOther)
 		return
 	}
 
@@ -831,13 +831,13 @@ func exchangeToken(w http.ResponseWriter, r *http.Request) {
 	sessionManager.Put(r.Context(), "user_id", auth.Athlete.ID)
 
 	if isNew {
-		http.Redirect(w, r, "/get-started", http.StatusFound)
+		http.Redirect(w, r, "/goals", http.StatusFound)
 	}
 
-	http.Redirect(w, r, "/user-dashboard", http.StatusFound)
+	http.Redirect(w, r, "/dashboard", http.StatusFound)
 }
 
-func handleGetStarted(w http.ResponseWriter, r *http.Request) {
+func handleSetGoals(w http.ResponseWriter, r *http.Request) {
 	user, ok := r.Context().Value(userContextKey).(StravaAuth)
 	if !ok {
 		slog.Error("Context fetch failed")
@@ -855,9 +855,9 @@ func handleGetStarted(w http.ResponseWriter, r *http.Request) {
 		slog.Error("Error getting sports", "error", err)
 	}
 
-	// TODO: setup goal setting template make re-useable so that I can use this page to be the goal update page as well.
 	tmpl.ExecuteTemplate(w, "get-started.html", map[string]interface{}{
 		"Username":        user.Athlete.Username,
+		"ProfileImg":      user.Athlete.ProfileImg,
 		"MeasurementUnit": user.Athlete.MeasurementUnit,
 		"Goals":           goals,
 		"Sports":          sports,
@@ -964,9 +964,12 @@ func main() {
 	mux.HandleFunc("/exchange_token", exchangeToken)
 	mux.HandleFunc("/error", errorPage)
 
+	// Static files
+	mux.Handle("/styles.css", http.FileServer(http.Dir("templates")))
+
 	// Protected
-	mux.Handle("/user-dashboard", requireLogin(http.HandlerFunc(handleUserDashboard)))
-	mux.Handle("/get-started", requireLogin(http.HandlerFunc(handleGetStarted)))
+	mux.Handle("/dashboard", requireLogin(http.HandlerFunc(handleUserDashboard)))
+	mux.Handle("/goals", requireLogin(http.HandlerFunc(handleSetGoals)))
 	mux.Handle("/sync", requireLogin(http.HandlerFunc(handleSyncActivities)))
 
 	slog.Info("Server starting on :8090")
