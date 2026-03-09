@@ -1,7 +1,7 @@
 {{template "header.html"}}
 {{template "nav.html"}}
 <main>
-    <h1>Hi {{.Username}}!</h1>
+    <h1>Set Goals</h1>
 
     {{if len .Goals}}
     <h2>Your Current Goals</h2>
@@ -34,7 +34,6 @@
     {{$elevationUnit = "ft"}}
     {{end}}
 
-    <h2>Set Your Goals</h2>
     <p>Select the activity type, set your target date and set your goal. You can set a distance, elevation or duration
         goal or all three.</p>
 

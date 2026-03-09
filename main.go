@@ -114,6 +114,16 @@ type GoalDisplay struct {
 	DurationGoal   sql.NullFloat64
 }
 
+type GoalForm struct { 
+	GoalID int64 `form:"goal_id"`
+	SportID int64 `form:"sport_id"`
+	TargetDate string `form:"target_date"`
+	Distance float64 `form:"distance"`
+	Elevation float64 `form:"elevation"`
+	DurationHours int `form:"duration_hours"`
+	DurationMinutes int `form:"duration_minutes"`
+}
+
 type Activity struct {
 	ID        int64     `json:"id"`
 	Name      string    `json:"name"`
@@ -863,6 +873,18 @@ func handleSetGoals(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func handleSaveGoals(w http.ResponseWriter, r *http.Request) {
+
+	user, ok := r.Context().Value(userContextKey).(StravaAuth)
+	if !ok {
+		slog.Error("Context fetch failed")
+		http.Error(w, "Internal Server Error", 500)
+		return
+	}
+
+	r.ParseForm()
+}
+
 func handleUserDashboard(w http.ResponseWriter, r *http.Request) {
 
 	user, ok := r.Context().Value(userContextKey).(StravaAuth)
@@ -969,6 +991,7 @@ func main() {
 	// Protected
 	mux.Handle("/dashboard", requireLogin(http.HandlerFunc(handleUserDashboard)))
 	mux.Handle("/goals", requireLogin(http.HandlerFunc(handleSetGoals)))
+	mux.Handle("/save-goals", requireLogin(http.HandlerFunc(handleSaveGoals)))
 	mux.Handle("/sync", requireLogin(http.HandlerFunc(handleSyncActivities)))
 
 	slog.Info("Server starting on :8090")
