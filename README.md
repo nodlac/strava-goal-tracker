@@ -38,6 +38,7 @@ docker run -d \
 - [ ] low bar with privacy and terms of use
 - [ ] update color scheme
 - [ ] build out landing page.
+- [ ] add user logo to navbar
 
 # MVP
 

@@ -855,8 +855,7 @@ func handleSetGoals(w http.ResponseWriter, r *http.Request) {
 		slog.Error("Error getting sports", "error", err)
 	}
 
-	tmpl.ExecuteTemplate(w, "get-started.html", map[string]interface{}{
-		"Username":        user.Athlete.Username,
+	tmpl.ExecuteTemplate(w, "set-goals.html", map[string]interface{}{
 		"ProfileImg":      user.Athlete.ProfileImg,
 		"MeasurementUnit": user.Athlete.MeasurementUnit,
 		"Goals":           goals,
