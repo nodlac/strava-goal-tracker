@@ -1,4 +1,5 @@
 # Dev Valkey Setup
+
 ## If you get a daemon not running
 ```
 sudo systemctl start docker
@@ -31,38 +32,80 @@ docker run -d \
   valkey-server --requirepass "StrongPassword" --appendonly yes
 ```
 
-# TODO: 
-- [ ] add way to edit / delete goals from goal select page
-- [ ] handle raw data being sent up (also need to setup endpoint to capture goals and setup way to 
-- [x] Make it so you can add arbitrary goals. IE target date ... sport type
-    - [x] build form 
-- [ ] setup standard head and load HTMX there
-- [ ] Set up tmpl and all the html pages. It'll take a bit but it's time. 
-       bare-bones for now but then build it more complex
-- [ ] handle error use logged in and account gets deleted should drop the valkey
-- [ ] build out set goals section
-    - [/] build goals form  (A little blocked here because the template is so bad.
-    - [ ] handle units
-    - [ ] convert all data into meters so that data is stored uniformly. 
-        (Will result in extra calculations but it'll be worth it);
-- [ ] build out dashboard page run calculations for where we should be at
-- [ ] build out prefeernces
-    - [ ] add way to set measurement preference
-    - [ ] add sync strava profile button
-    - [ ] add way to manually set your timezone
-    - [ ] build delete my data function w/ confirm.
-    - [ ] build delete my account function w/ confirm.
-    - [ ] remove sync data button and replace with delete data and re-sync 
-            (add warning that this is only if data has become corrupted or if data is missing)
-- [ ] build webhook that will invalidate / delete user on app access revocation.
-- [ ] setup webhook for activity creation so that you only need to sync if 
+---
 
-# LATER
-- [ ] create privacy policy and terms of use.  
-- [ ] expire users that haven't logged in with X months
-- [ ] setup golang-migrate to handle changes to tables
-- [ ] add ability to sync previous years and display previous yekkkk21kar data.
-- [ ] add rate limits
+# MVP
+
+## MVP: Goal Setting
+- [ ] Add goal_id hidden field to template rows
+- [ ] Add "Go to Dashboard" button to template  
+- [ ] Add GoalForm struct to main.go
+- [ ] Register /save-goals route
+- [ ] Implement handleSaveGoals handler
+- [ ] Pre-populate existing goals in form (for editing)
+
+## MVP: Dashboard
+- [ ] Build dashboard template showing goal progress
+- [ ] Display current totals vs goal targets (simple list, no charts)
+
+---
+
+# Nice to Have (Low Lift)
+
+## HTML Partials
+- [x] Create templates/header.html with common head, HTMX, Chart.js
+- [x] Create templates/nav.html with common navigation
+- [ ] Update all templates to use partials
+
+---
+
+# Phase 2: Dashboard with Charts
+
+## Dashboard Data Structures
+- DashboardData struct for template payload
+- PeriodActivity, GoalWithProgress structs
+
+## Dashboard Functions
+- [ ] fetchActivitiesInRange(userID, startDate, endDate)
+- [ ] calculateGoalProgress(goal, activities) 
+- [ ] groupActivitiesByWeek(activities)
+- [ ] groupActivitiesByMonth(activities)
+- [ ] buildCumulativeData(activities)
+- [ ] getActivityTypeDistribution(activities)
+
+## Dashboard Implementation
+- [ ] Add Chart.js to header
+- [ ] Build charts: cumulative progress, weekly/monthly bars, activity distribution
+- [ ] Add filter controls (time range, group by week/month)
+
+---
+
+# Phase 3: Preferences & Account
+
+- [ ] Handle units (convert to meters on save)
+- [ ] Preferences page: measurement preference, timezone
+- [ ] Delete my data function
+- [ ] Delete my account function
+
+---
+
+# Phase 4: Webhooks
+
+- [ ] Register webhook with Strava
+- [ ] Handle webhook events (new activities)
+- [ ] Webhook to delete user on access revocation
+
+---
+
+# Later
+
+- [ ] Sync all historical data (last 2+ years)
+- [ ] Privacy policy and terms of use
+- [ ] Expire users after X months inactivity
+- [ ] Setup golang-migrate for database migrations
+- [ ] Add rate limits
+
+---
 
 # Done
 - [x] finish activity sync -- just need to be able to handle pagination and getting all activities.
