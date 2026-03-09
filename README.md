@@ -34,6 +34,11 @@ docker run -d \
 
 ---
 
+# Distractions 
+- [ ] low bar with privacy and terms of use
+- [ ] update color scheme
+- [ ] build out landing page.
+
 # MVP
 
 ## MVP: Goal Setting
