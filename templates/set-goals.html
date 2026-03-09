@@ -1,123 +1,6 @@
-<!DOCTYPE html>
-<html>
-
-<head>
-    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
-    <style>
-        .htmx-indicator {
-            display: none;
-        }
-
-        .htmx-request .htmx-indicator {
-            display: block;
-        }
-
-        .htmx-request.btn {
-            display: none;
-        }
-
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            max-width: 900px;
-            margin: 0 auto;
-            padding: 20px;
-        }
-
-        .goal-card {
-            border: 1px solid #ddd;
-            border-radius: 8px;
-            padding: 16px;
-            margin-bottom: 16px;
-        }
-
-        .goal-card h3 {
-            margin-top: 0;
-        }
-
-        .goal-values {
-            display: flex;
-            gap: 16px;
-            flex-wrap: wrap;
-        }
-
-        .goal-value {
-            background: #f5f5f5;
-            padding: 8px 12px;
-            border-radius: 4px;
-        }
-
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-bottom: 16px;
-        }
-
-        th, td {
-            border: 1px solid #ddd;
-            padding: 8px;
-            text-align: left;
-        }
-
-        th {
-            background: #f5f5f5;
-        }
-
-        select, input[type="date"], input[type="number"] {
-            padding: 8px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            width: 100%;
-            box-sizing: border-box;
-        }
-
-        input[type="number"]:disabled {
-            background: #e0e0e0;
-            cursor: not-allowed;
-        }
-
-        .btn {
-            padding: 8px 16px;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-            margin-right: 8px;
-        }
-
-        .btn-primary {
-            background: #fc4c02;
-            color: white;
-        }
-
-        .btn-secondary {
-            background: #e0e0e0;
-            color: #333;
-        }
-
-        .btn-danger {
-            background: #dc3545;
-            color: white;
-            padding: 4px 8px;
-            font-size: 12px;
-        }
-
-        .measurement-notice {
-            color: #666;
-            font-size: 14px;
-        }
-
-        .duration-inputs {
-            display: flex;
-            align-items: center;
-            gap: 4px;
-        }
-
-        .duration-inputs input {
-            width: 60px;
-        }
-    </style>
-</head>
-
-<body>
+{{template "header.html"}}
+{{template "nav.html"}}
+<main>
     <h1>Hi {{.Username}}!</h1>
 
     {{if len .Goals}}
@@ -152,7 +35,8 @@
     {{end}}
 
     <h2>Set Your Goals</h2>
-    <p>Select the activity type, set your target date and set your goal. You can set a distance, elevation or duration goal or all three.</p>
+    <p>Select the activity type, set your target date and set your goal. You can set a distance, elevation or duration
+        goal or all three.</p>
 
     <form hx-post="/save-goals" hx-target="#sync-ui">
         <table id="goals-table">
@@ -183,7 +67,8 @@
                         <input type="number" name="goals[0].distance" step="1" min="0" placeholder="0.00">
                     </td>
                     <td>
-                        <input type="number" name="goals[0].elevation" value="0" step="1" min="0" placeholder="0" disabled>
+                        <input type="number" name="goals[0].elevation" value="0" step="1" min="0" placeholder="0"
+                            disabled>
                     </td>
                     <td>
                         <div class="duration-inputs">
@@ -207,7 +92,8 @@
         <span id="loading" class="htmx-indicator">Syncing...</span>
     </div>
 
-    <p class="measurement-notice">We detected that you use {{.MeasurementUnit}} to measure your workouts. You can change this in the profile settings.</p>
+    <p class="measurement-notice">We detected that you use {{.MeasurementUnit}} to measure your workouts. You can change
+        this in the profile settings.</p>
 
     <script>
         let rowCount = 1;
@@ -266,6 +152,7 @@
             }
         }
     </script>
+</main>
 </body>
 
 </html>

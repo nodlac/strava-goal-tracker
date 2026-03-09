@@ -1,0 +1,11 @@
+<nav>
+    <a href="/dashboard">Dashboard</a>
+    <a href="/goals">Goals</a>
+    <div class="user-info">
+        {{if .ProfileImg}}
+        <img src="{{.ProfileImg}}" alt="Profile">
+        {{end}}
+        <span>{{.Username}}</span>
+        <a href="/logout" class="logout">Logout</a>
+    </div>
+</nav>

@@ -1,37 +1,14 @@
-<!DOCTYPE html>
-<html>
-
-<head>
-    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
-    <style>
-        .htmx-indicator {
-            display: none;
-        }
-
-        .htmx-request .htmx-indicator {
-            display: block;
-        }
-
-        .htmx-request.btn {
-            display: none;
-        }
-    </style>
-</head>
-
-<body>
-    <div>
-        <a href='/logout'>Logout</a>
-    </div>
-    <h1>{{.Username}}'s 2026 Goal Dashboard</h1>
-    <img src='{{.ProfileImg}}'><br>
-    <h2> Measurement Units: {{.MeasurementLabel}} </h2>
-    <h2> Timezone: {{.Timezone}} </h2>
+{{template "header.html"}}
+{{template "nav.html"}}
+<main>
+    <h1>{{.Username}}'s Dashboard</h1>
+    <p><strong>Measurement Units:</strong> {{.MeasurementLabel}}</p>
+    <p><strong>Timezone:</strong> {{.Timezone}}</p>
+    
     <div id="sync-ui">
         <button hx-post="/sync" hx-target="#sync-ui" hx-indicator="#loading">
             Sync Now
         </button>
         <span id="loading" class="htmx-indicator">Syncing...</span>
     </div>
-</body>
-
-</html>
+</main>

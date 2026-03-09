@@ -1,0 +1,162 @@
+/* Base Styles */
+* {
+    box-sizing: border-box;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    margin: 0;
+    padding: 0;
+    background: #f5f5f5;
+}
+
+main {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+/* HTMX Indicator */
+.htmx-indicator {
+    display: none;
+}
+
+.htmx-request .htmx-indicator {
+    display: block;
+}
+
+.htmx-request.btn {
+    display: none;
+}
+
+/* Buttons */
+.btn {
+    padding: 8px 16px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    text-decoration: none;
+    display: inline-block;
+}
+
+.btn-primary {
+    background: #fc4c02;
+    color: white;
+}
+
+.btn-secondary {
+    background: #e0e0e0;
+    color: #333;
+}
+
+.btn-danger {
+    background: #dc3545;
+    color: white;
+}
+
+/* Form Elements */
+input, select {
+    padding: 8px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    width: 100%;
+}
+
+input:disabled {
+    background: #e0e0e0;
+    cursor: not-allowed;
+}
+
+/* Goal Card */
+.goal-card {
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    padding: 16px;
+    margin-bottom: 16px;
+    background: white;
+}
+
+.goal-card h3 {
+    margin-top: 0;
+}
+
+.goal-values {
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+}
+
+.goal-value {
+    background: #f5f5f5;
+    padding: 8px 12px;
+    border-radius: 4px;
+}
+
+/* Table */
+table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 16px;
+}
+
+th, td {
+    border: 1px solid #ddd;
+    padding: 8px;
+    text-align: left;
+}
+
+th {
+    background: #f5f5f5;
+}
+
+/* Duration Inputs */
+.duration-inputs {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.duration-inputs input {
+    width: 60px;
+}
+
+/* Measurement Notice */
+.measurement-notice {
+    color: #666;
+    font-size: 14px;
+}
+
+/* Nav */
+nav {
+    background: #333;
+    padding: 12px 20px;
+    display: flex;
+    gap: 20px;
+    align-items: center;
+}
+
+nav a {
+    color: white;
+    text-decoration: none;
+}
+
+nav a:hover {
+    text-decoration: underline;
+}
+
+nav .user-info {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-left: auto;
+}
+
+nav .user-info img {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+}
+
+nav .logout {
+    color: #fc4c02;
+}
