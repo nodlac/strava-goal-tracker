@@ -27,6 +27,7 @@ import (
 // --- Types & Globals ---
 
 const (
+	KmToMeters    = 1000
 	MetersToYards = 1.09361
 	MetersToMiles = 0.000621371
 	MetersToFeet  = 3.28084
@@ -114,14 +115,13 @@ type GoalDisplay struct {
 	DurationGoal   sql.NullFloat64
 }
 
-type GoalForm struct { 
-	GoalID int64 `form:"goal_id"`
-	SportID int64 `form:"sport_id"`
-	TargetDate string `form:"target_date"`
-	Distance float64 `form:"distance"`
-	Elevation float64 `form:"elevation"`
-	DurationHours int `form:"duration_hours"`
-	DurationMinutes int `form:"duration_minutes"`
+type GoalForm struct {
+	GoalID     int64   `form:"goal_id"`
+	SportID    int64   `form:"sport_id"`
+	TargetDate string  `form:"target_date"`
+	Distance   float64 `form:"distance"`
+	Elevation  float64 `form:"elevation"`
+	Duration   int     `form:"duration"`
 }
 
 type Activity struct {
@@ -873,18 +873,6 @@ func handleSetGoals(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func handleSaveGoals(w http.ResponseWriter, r *http.Request) {
-
-	user, ok := r.Context().Value(userContextKey).(StravaAuth)
-	if !ok {
-		slog.Error("Context fetch failed")
-		http.Error(w, "Internal Server Error", 500)
-		return
-	}
-
-	r.ParseForm()
-}
-
 func handleUserDashboard(w http.ResponseWriter, r *http.Request) {
 
 	user, ok := r.Context().Value(userContextKey).(StravaAuth)
@@ -938,6 +926,69 @@ func errorPage(w http.ResponseWriter, r *http.Request) {
 }
 
 // --- HTMX Handlers ---
+
+func handleSaveGoals(w http.ResponseWriter, r *http.Request) {
+
+	user, ok := r.Context().Value(userContextKey).(StravaAuth)
+	if !ok {
+		slog.Error("Context fetch failed")
+		http.Error(w, "Internal Server Error", 500)
+		return
+	}
+
+	err := r.ParseForm()
+	if err != nil {
+		slog.Error("Failed to parse form data", "error", err)
+		http.Error(w, "Error parsing form data", 500)
+	}
+
+	for i := 0; i < 100; i++ {
+		sportIDStr := r.Form.Get(fmt.Sprintf("goals[%d].sport_id", i))
+		if sportIDStr == "" {
+			break
+		}
+
+		sportID, _ := strconv.ParseInt(sportIDStr, 10, 64)
+		goalIDStr := r.Form.Get(fmt.Sprintf("goals[%d].goal_id", i))
+		goalID, _ := strconv.ParseInt(goalIDStr, 10, 64)
+		targetDate := r.Form.Get(fmt.Sprintf("goals[%d].target_date", i))
+		distanceStr := r.Form.Get(fmt.Sprintf("goals[%d].distance", i))
+		distance, _ := strconv.ParseFloat(distanceStr, 64)
+		elevationStr := r.Form.Get(fmt.Sprintf("goals[%d].elevation", i))
+		elevation, _ := strconv.ParseFloat(elevationStr, 64)
+		hoursStr := r.Form.Get(fmt.Sprintf("goals[%d].duration_hours", i))
+		hours, _ := strconv.ParseInt(hoursStr, 10, 64)
+		mintuesStr := r.Form.Get(fmt.Sprintf("goals[%d].duration_minutes", i))
+		minutes, _ := strconv.ParseInt(mintuesStr, 10, 64)
+
+		formattedGoal := GoalForm{
+			GoalID:     goalID,
+			SportID:    sportID,
+			TargetDate: targetDate,
+			Distance:   distance * KmToMeters,
+			Elevation:  elevation,
+			Duration:   int(hours*60*60 + minutes*60),
+		}
+		if user.Athlete.MeasurementUnit == "feet" {
+			formattedGoal.Distance = formattedGoal.Distance * MilesToMeters
+			formattedGoal.Elevation = formattedGoal.Elevation * FeetToMeters
+		}
+
+		if goalID == 0 {
+			// update query
+
+		} else {
+			// insert query
+		}
+
+	}
+	fmt.Fprintf(w, `
+    <div>
+        <button hx-post="/" hx-target="#sync-ui" hx-indicator="#loading">Sync Again</button>
+        <p>Success!</p>
+    </div>
+`)
+}
 
 func handleSyncActivities(w http.ResponseWriter, r *http.Request) {
 
