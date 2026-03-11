@@ -43,7 +43,8 @@ docker run -d \
 # MVP
 
 ## MVP: Goal Setting
-- [ ] Add goal_id hidden field to template rows
+- [ ] fix user logo in nav It's broken
+- [ ] Add goal_id hidden field to template rows -- setup current goals in table (this is what's missing)
 - [ ] Add "Go to Dashboard" button to template  
 - [ ] Add GoalForm struct to main.go
 - [ ] Register /save-goals route
@@ -89,7 +90,7 @@ docker run -d \
 # Phase 3: Preferences & Account
 
 - [ ] Handle units (convert to meters on save)
-- [ ] Preferences page: measurement preference, timezone
+- [ ] Preferences page: measurement preference, timezone,
 - [ ] Delete my data function
 - [ ] Delete my account function
 
