@@ -97,7 +97,8 @@ type Sport struct {
 type Goal struct {
 	ID             int64           `json:"id"`
 	SportId        int64           `json:"sport_id"`
-	TargetDate     time.Time       `json:"target_date"`
+	StartDate      time.Time       `json:"start_date"`
+	EndDate        time.Time       `json:"end_date"`
 	IncludeVirtual bool            `json:"include_virtual"`
 	UserStravaId   int64           `json:"user_strava_id"`
 	ElevationGoal  sql.NullFloat64 `json:"elevation_goal"`
@@ -106,7 +107,8 @@ type Goal struct {
 }
 
 type GoalDisplay struct {
-	TargetDate     time.Time
+	StartDate      time.Time
+	EndDate        time.Time
 	IncludeVirtual bool
 	SportName      string
 	HasElevation   bool
@@ -116,12 +118,14 @@ type GoalDisplay struct {
 }
 
 type GoalForm struct {
-	GoalID     int64   `form:"goal_id"`
-	SportID    int64   `form:"sport_id"`
-	TargetDate string  `form:"target_date"`
-	Distance   float64 `form:"distance"`
-	Elevation  float64 `form:"elevation"`
-	Duration   int     `form:"duration"`
+	GoalID         int64     `form:"goal_id"`
+	SportID        int64     `form:"sport_id"`
+	IncludeVirtual bool      `form:"include_virtual`
+	StartDate      time.Time `json:"start_date"`
+	EndDate        time.Time `json:"end_date"`
+	Distance       float64   `form:"distance"`
+	Elevation      float64   `form:"elevation"`
+	Duration       int       `form:"duration"`
 }
 
 type Activity struct {
@@ -178,9 +182,9 @@ func initValkey() {
 
 func initDB() {
 	var err error
-	db, err = sql.Open("sqlite", "strava_app.db?_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)")
+	db, err = sql.Open("sqlite", "goal_tracker.db?_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)")
 	if err != nil {
-		slog.Error("SQLite connection failed", "error", err)
+		slog.Error("SQLite connection failed", "fatal", err)
 		os.Exit(1)
 	}
 	db.SetMaxOpenConns(1)
@@ -195,9 +199,9 @@ func initDB() {
         expires_at INTEGER,
         profile_img TEXT,
         timezone TEXT,
-		measurement_unit TEXT,
-		tracked_sports ARRAY FORIEGN KEYS);`
+		measurement_unit TEXT);`
 	if _, err := db.Exec(usersQuery); err != nil {
+		slog.Error("Failed to create users table", "fatal", err)
 		panic(err)
 	}
 
@@ -210,6 +214,7 @@ func initDB() {
 		image_URL TEXT
 	);`
 	if _, err := db.Exec(sportsQuery); err != nil {
+		slog.Error("Failed to create sports table", "fatal", err)
 		panic(err)
 	}
 
@@ -226,7 +231,8 @@ func initDB() {
 	goalsQuery := `
     CREATE TABLE IF NOT EXISTS goals (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-		target_date DATE,
+		start_date DATE,
+		end_date DATE,
         include_virtual BOOLEAN,
 		user_strava_id INTEGER,
         sport_id INTEGER,
@@ -235,9 +241,10 @@ func initDB() {
 		duration_goal INTEGER,
 		FOREIGN KEY(user_strava_id) REFERENCES users(strava_id)
 		FOREIGN KEY(sport_id) REFERENCES sports(id)
-		UNIQUE(target_date, user_strava_id, sport_id, include_virtual)
+		UNIQUE(start_date, end_date, user_strava_id, sport_id, include_virtual)
 		);`
 	if _, err := db.Exec(goalsQuery); err != nil {
+		slog.Error("Failed to create goals table", "fatal", err)
 		panic(err)
 	}
 
@@ -254,6 +261,7 @@ func initDB() {
 			FOREIGN KEY(user_strava_id) REFERENCES users(strava_id)
 		);`
 	if _, err := db.Exec(acitiviesQuery); err != nil {
+		slog.Error("Failed to create user_activities table", "fatal", err)
 		panic(err)
 	}
 }
@@ -453,7 +461,8 @@ func fetchUserGoals(user StravaAuth) ([]Goal, error) {
 	rows, err := db.Query(
 		`SELECT 
 			id,
-			target_date,
+			start_date,
+			end_date,
 			include_virtual,
 			user_strava_id,
 			sport_id,
@@ -462,8 +471,8 @@ func fetchUserGoals(user StravaAuth) ([]Goal, error) {
 			duration_goal
 		FROM goals 
 		WHERE user_strava_id = ?
-			AND target_date > datetime('now')
-		ORDER BY target_date DESC;`,
+			AND end_date > datetime('now')
+		ORDER BY end_date DESC;`,
 		user.Athlete.ID)
 	if err != nil {
 		slog.Error("Failed to Fetch Goals", "error", err)
@@ -475,7 +484,8 @@ func fetchUserGoals(user StravaAuth) ([]Goal, error) {
 		var g Goal
 		err := rows.Scan(
 			&g.ID,
-			&g.TargetDate,
+			&g.StartDate,
+			&g.EndDate,
 			&g.IncludeVirtual,
 			&g.UserStravaId,
 			&g.SportId,
@@ -951,7 +961,34 @@ func handleSaveGoals(w http.ResponseWriter, r *http.Request) {
 		sportID, _ := strconv.ParseInt(sportIDStr, 10, 64)
 		goalIDStr := r.Form.Get(fmt.Sprintf("goals[%d].goal_id", i))
 		goalID, _ := strconv.ParseInt(goalIDStr, 10, 64)
-		targetDate := r.Form.Get(fmt.Sprintf("goals[%d].target_date", i))
+		includeVirtual, _ := strconv.ParseBool("goals[%d].include_virtual")
+		startDateStr := r.Form.Get(fmt.Sprintf("goals[%d].start_date", i))
+		startDate := time.Date(time.Now().Year(), 1, 1, 0, 0, 0, 0, time.UTC)
+		if startDateStr != "" {
+			startDate, err = time.Parse("2006-01-02", startDateStr)
+			if err != nil {
+				slog.Error("Failed to parse start_date for goals", "error", err)
+				fmt.Fprintf(w, `
+				<div>
+					<button hx-post="/" hx-target="#sync-ui" hx-indicator="#loading">Save</button>
+					<p>Failed to save!</p>
+				</div>
+			`)
+				return
+			}
+		}
+		endDateStr := r.Form.Get(fmt.Sprintf("goals[%d].end_date", i))
+		endDate, err := time.Parse("2006-01-02", endDateStr)
+		if err != nil {
+			slog.Error("Failed to parse end_date for goals", "error", err)
+			fmt.Fprintf(w, `
+				<div>
+					<button hx-post="/" hx-target="#sync-ui" hx-indicator="#loading">Save</button>
+					<p>Failed to save!</p>
+				</div>
+			`)
+			return
+		}
 		distanceStr := r.Form.Get(fmt.Sprintf("goals[%d].distance", i))
 		distance, _ := strconv.ParseFloat(distanceStr, 64)
 		elevationStr := r.Form.Get(fmt.Sprintf("goals[%d].elevation", i))
@@ -973,32 +1010,93 @@ func handleSaveGoals(w http.ResponseWriter, r *http.Request) {
 		}
 
 		formattedGoal := GoalForm{
-			GoalID:     goalID,
-			SportID:    sportID,
-			TargetDate: targetDate,
-			Distance:   distance * KmToMeters,
-			Elevation:  elevation,
-			Duration:   durationMinutes * 60,
+			GoalID:         goalID,
+			SportID:        sportID,
+			IncludeVirtual: includeVirtual,
+			StartDate:      startDate,
+			EndDate:        endDate,
+			Distance:       distance * KmToMeters,
+			Elevation:      elevation,
+			Duration:       durationMinutes * 60,
 		}
 		if user.Athlete.MeasurementUnit == "feet" {
 			formattedGoal.Distance = formattedGoal.Distance * MilesToMeters
 			formattedGoal.Elevation = formattedGoal.Elevation * FeetToMeters
 		}
 
+		var query string
+		var args []interface{}
 		if goalID == 0 {
-			// update query
+			query = `
+				INSERT INTO goals (
+					user_strava_id,
+					start_date,
+					end_date,
+					include_virtual,
+					sport_id,
+					elevation_goal,
+					distance_goal,
+					duration_goal
+				) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+
+			args = []interface{}{
+				user.Athlete.ID,
+				formattedGoal.StartDate,
+				formattedGoal.EndDate,
+				formattedGoal.IncludeVirtual,
+				formattedGoal.SportID,
+				formattedGoal.Elevation,
+				formattedGoal.Distance,
+				formattedGoal.Duration,
+			}
 
 		} else {
-			// insert query
+			query = `
+				UPDATE goals 
+				SET 
+					start_date = ?,
+					end_date = ?,
+					include_virtual = ?,
+					sport_id = ?,
+					elevation_goal = ?,
+					distance_goal = ?,
+					duration_goal = ?
+				WHERE goal_id = ?
+					AND user_strava_id = ?`
+
+			args = []interface{}{
+				formattedGoal.StartDate,
+				formattedGoal.EndDate,
+				formattedGoal.IncludeVirtual,
+				formattedGoal.SportID,
+				formattedGoal.Elevation,
+				formattedGoal.Distance,
+				formattedGoal.Duration,
+				formattedGoal.GoalID,
+				user.Athlete.ID,
+			}
+		}
+
+		_, err = db.Exec(query, args...)
+
+		if err != nil {
+			slog.Error("Failed to save goals", "error", err)
+			fmt.Fprintf(w, `
+				<div>
+					<button hx-post="/" hx-target="#sync-ui" hx-indicator="#loading">Save</button>
+					<p>Failed to save!</p>
+				</div>
+			`)
+			return
 		}
 
 	}
 	fmt.Fprintf(w, `
-    <div>
-        <button hx-post="/" hx-target="#sync-ui" hx-indicator="#loading">Sync Again</button>
-        <p>Success!</p>
-    </div>
-`)
+		<div>
+			<button hx-post="/" hx-target="#sync-ui" hx-indicator="#loading">Save</button>
+			<p>Success!</p>
+		</div>
+	`)
 }
 
 func handleSyncActivities(w http.ResponseWriter, r *http.Request) {

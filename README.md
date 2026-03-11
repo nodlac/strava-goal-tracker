@@ -43,13 +43,13 @@ docker run -d \
 # MVP
 
 ## MVP: Goal Setting
-- [ ] fix user logo in nav It's broken
-- [ ] Add goal_id hidden field to template rows -- setup current goals in table (this is what's missing)
-- [ ] Add "Go to Dashboard" button to template  
-- [ ] Add GoalForm struct to main.go
-- [ ] Register /save-goals route
-- [ ] Implement handleSaveGoals handler
 - [ ] Pre-populate existing goals in form (for editing)
+- [ ] Add goal_id hidden field to template rows -- setup current goals in table (this is what's missing)
+- [ ] fix user logo in nav It's broken
+- [x] Implement handleSaveGoals handler
+- [x] Add GoalForm struct to main.go
+- [x] Add "Go to Dashboard" button to template  
+- [x] Register /save-goals route
 
 ## MVP: Dashboard
 - [ ] Build dashboard template showing goal progress

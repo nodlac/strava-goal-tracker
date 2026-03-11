@@ -9,7 +9,7 @@
         {{range .Goals}}
         <div class="goal-card">
             <h3>{{.SportName}}</h3>
-            <p>Target Date: {{.TargetDate.Format "Jan 2, 2006"}}</p>
+            <p>Start Date: {{.StartDate.Format "Jan 2, 2006"}} | End Date: {{.EndDate.Format "Jan 2, 2006"}}</p>
             <div class="goal-values" id="{{.ID.Int64}}">
                 {{if .DistanceGoal.Valid}}
                 <div class="goal-value">Distance: {{.DistanceGoal.Float64}}</div>
@@ -34,7 +34,7 @@
     {{$elevationUnit = "ft"}}
     {{end}}
 
-    <p>Select the activity type, set your target date and set your goal. You can set a distance, elevation or duration
+    <p>Select the activity type, set your start and end date and set your goal. You can set a distance, elevation or duration
         goal or all three.</p>
 
     <form hx-post="/save-goals" hx-target="#sync-ui">
@@ -42,7 +42,8 @@
             <thead>
                 <tr>
                     <th>Activity Type</th>
-                    <th>Target Date</th>
+                    <th>Start Date</th>
+                    <th>End Date</th>
                     <th>Distance ({{$distanceUnit}})</th>
                     <th>Elevation ({{$elevationUnit}})</th>
                     <th>Duration</th>
@@ -60,7 +61,10 @@
                         </select>
                     </td>
                     <td>
-                        <input type="date" name="goals[0].target_date" required>
+                        <input type="date" name="goals[0].start_date" id="start_date_0" required>
+                    </td>
+                    <td>
+                        <input type="date" name="goals[0].end_date" id="end_date_0" required>
                     </td>
                     <td>
                         <input type="number" name="goals[0].distance" step="1" min="0" placeholder="0.00">
@@ -95,6 +99,20 @@
 
         const sportOptions = `{{range .Sports}}<option value="{{.ID}}" data-has-elevation="{{.HasElevation}}">{{.Name}}</option>{{end}}`;
 
+        function getDefaultDates() {
+            const today = new Date();
+            const year = today.getFullYear();
+            const startDate = today.toISOString().split('T')[0];
+            const endDate = `${year}-12-31`;
+            return { startDate, endDate };
+        }
+
+        function setDefaultDates(row) {
+            const { startDate, endDate } = getDefaultDates();
+            row.querySelector('[name$=".start_date"]').value = startDate;
+            row.querySelector('[name$=".end_date"]').value = endDate;
+        }
+
         function toggleElevation(selectEl) {
             const row = selectEl.closest('tr');
             const elevationInput = row.querySelector('[name$=".elevation"]');
@@ -116,7 +134,10 @@
                     </select>
                 </td>
                 <td>
-                    <input type="date" name="goals[${rowCount}].target_date" required>
+                    <input type="date" name="goals[${rowCount}].start_date" required>
+                </td>
+                <td>
+                    <input type="date" name="goals[${rowCount}].end_date" required>
                 </td>
                 <td>
                     <input type="number" name="goals[${rowCount}].distance" step="1" min="0" placeholder="0.00">
@@ -132,8 +153,16 @@
                 </td>
             `;
             tbody.appendChild(tr);
+            setDefaultDates(tr);
             rowCount++;
         }
+
+        document.addEventListener('DOMContentLoaded', function() {
+            const firstRow = document.querySelector('#goals-table tbody tr');
+            if (firstRow) {
+                setDefaultDates(firstRow);
+            }
+        });
 
         function removeRow(btn) {
             const row = btn.closest('tr');
