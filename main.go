@@ -956,10 +956,21 @@ func handleSaveGoals(w http.ResponseWriter, r *http.Request) {
 		distance, _ := strconv.ParseFloat(distanceStr, 64)
 		elevationStr := r.Form.Get(fmt.Sprintf("goals[%d].elevation", i))
 		elevation, _ := strconv.ParseFloat(elevationStr, 64)
-		hoursStr := r.Form.Get(fmt.Sprintf("goals[%d].duration_hours", i))
-		hours, _ := strconv.ParseInt(hoursStr, 10, 64)
-		mintuesStr := r.Form.Get(fmt.Sprintf("goals[%d].duration_minutes", i))
-		minutes, _ := strconv.ParseInt(mintuesStr, 10, 64)
+		durationStr := r.Form.Get(fmt.Sprintf("goals[%d].duration", i))
+
+		var durationMinutes int
+		if durationStr != "" {
+			if strings.Contains(durationStr, ":") {
+				parts := strings.Split(durationStr, ":")
+				if len(parts) == 2 {
+					hours, _ := strconv.Atoi(parts[0])
+					mins, _ := strconv.Atoi(parts[1])
+					durationMinutes = hours*60 + mins
+				}
+			} else {
+				durationMinutes, _ = strconv.Atoi(durationStr)
+			}
+		}
 
 		formattedGoal := GoalForm{
 			GoalID:     goalID,
@@ -967,7 +978,7 @@ func handleSaveGoals(w http.ResponseWriter, r *http.Request) {
 			TargetDate: targetDate,
 			Distance:   distance * KmToMeters,
 			Elevation:  elevation,
-			Duration:   int(hours*60*60 + minutes*60),
+			Duration:   durationMinutes * 60,
 		}
 		if user.Athlete.MeasurementUnit == "feet" {
 			formattedGoal.Distance = formattedGoal.Distance * MilesToMeters

@@ -6,7 +6,7 @@
     <p><strong>Timezone:</strong> {{.Timezone}}</p>
     
     <div id="sync-ui">
-        <button hx-post="/sync" hx-target="#sync-ui" hx-indicator="#loading">
+        <button class="btn btn-primary" hx-post="/sync" hx-target="#sync-ui" hx-indicator="#loading">
             Sync Now
         </button>
         <span id="loading" class="htmx-indicator">Syncing...</span>

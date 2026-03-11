@@ -10,7 +10,7 @@
         <div class="goal-card">
             <h3>{{.SportName}}</h3>
             <p>Target Date: {{.TargetDate.Format "Jan 2, 2006"}}</p>
-            <div class="goal-values">
+            <div class="goal-values" id="{{.ID.Int64}}">
                 {{if .DistanceGoal.Valid}}
                 <div class="goal-value">Distance: {{.DistanceGoal.Float64}}</div>
                 {{end}}
@@ -45,7 +45,7 @@
                     <th>Target Date</th>
                     <th>Distance ({{$distanceUnit}})</th>
                     <th>Elevation ({{$elevationUnit}})</th>
-                    <th>Duration (hrs : min)</th>
+                    <th>Duration</th>
                     <th></th>
                 </tr>
             </thead>
@@ -70,11 +70,7 @@
                             disabled>
                     </td>
                     <td>
-                        <div class="duration-inputs">
-                            <input type="number" name="goals[0].duration_hours" step="1" min="0" placeholder="0">
-                            <span>:</span>
-                            <input type="number" name="goals[0].duration_minutes" step="1" min="0" placeholder="0">
-                        </div>
+                        <input type="text" name="goals[0].duration" placeholder="1:30 or 90" pattern="[0-9]+:?[0-9]*">
                     </td>
                     <td>
                         <button type="button" class="btn btn-danger" onclick="removeRow(this)">X</button>
@@ -129,11 +125,7 @@
                     <input type="number" name="goals[${rowCount}].elevation" value="0" step="1" min="0" placeholder="0" disabled>
                 </td>
                 <td>
-                    <div class="duration-inputs">
-                        <input type="number" name="goals[${rowCount}].duration_hours" step="1" min="0" placeholder="0">
-                        <span>:</span>
-                        <input type="number" name="goals[${rowCount}].duration_minutes" step="1" min="0" placeholder="0">
-                    </div>
+                    <input type="text" name="goals[${rowCount}].duration" placeholder="1:30 or 90" pattern="[0-9]+:?[0-9]*">
                 </td>
                 <td>
                     <button type="button" class="btn btn-danger" onclick="removeRow(this)">X</button>
