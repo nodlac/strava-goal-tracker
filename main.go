@@ -177,6 +177,18 @@ func init() {
 	}
 }
 
+func executeTemplate(w http.ResponseWriter, name string, data interface{}) {
+	err := tmpl.ExecuteTemplate(w, name, data)
+	if err != nil {
+		slog.Error("Template error", "template", name, "error", err)
+		if os.Getenv("DEV") == "true" {
+			http.Error(w, "Template error: "+err.Error(), 500)
+		} else {
+			http.Error(w, "Internal Server Error", 500)
+		}
+	}
+}
+
 // --- Initialization ---
 
 func initLogger() *os.File {
@@ -904,7 +916,7 @@ func handleSetGoals(w http.ResponseWriter, r *http.Request) {
 		slog.Error("Error getting sports", "error", err)
 	}
 
-	tmpl.ExecuteTemplate(w, "set-goals.html", map[string]interface{}{
+	executeTemplate(w, "set-goals.html", map[string]interface{}{
 		"ProfileImg":      user.Athlete.ProfileImg,
 		"MeasurementUnit": user.Athlete.MeasurementUnit,
 		"Goals":           goals,
@@ -926,7 +938,7 @@ func handleUserDashboard(w http.ResponseWriter, r *http.Request) {
 		measurementLabel = "Imperial"
 	}
 
-	tmpl.ExecuteTemplate(w, "user-dashbaord.html", map[string]interface{}{
+	executeTemplate(w, "user-dashbaord.html", map[string]interface{}{
 		"Username":         user.Athlete.Username,
 		"ProfileImg":       user.Athlete.ProfileImg,
 		"MeasurementLabel": measurementLabel,
