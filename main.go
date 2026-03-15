@@ -17,6 +17,7 @@ import (
 	"strings"
 	"time"
 
+	reloader "github.com/MPMcIntyre/go-again"
 	"github.com/alexedwards/scs/redisstore"
 	"github.com/alexedwards/scs/v2"
 	"github.com/gomodule/redigo/redis"
@@ -144,7 +145,36 @@ type Activity struct {
 var tmpl *template.Template
 
 func init() {
-	tmpl = template.Must(template.ParseGlob("templates/*.html"))
+	_ = godotenv.Load()
+
+	funcs := template.FuncMap{}
+
+	if os.Getenv("DEV") == "true" {
+		rel, err := reloader.New(
+			func() {
+				tmpl = template.Must(
+					template.New("").Funcs(funcs).ParseGlob(
+						"templates/*.html"))
+			},
+			9000,
+			reloader.WithLogs(true),
+		)
+		if err != nil {
+			slog.Error("Failed to setup reloader", "error", err)
+			panic(err)
+		}
+		rel.Add("templates")
+
+		funcs = rel.TemplateFunc()
+		tmpl = template.Must(
+			template.New("").Funcs(funcs).ParseGlob("templates/*.html"))
+	} else {
+		funcs := template.FuncMap{
+			"LiveReload": func() template.HTML { return "" },
+		}
+		tmpl = template.Must(
+			template.New("").Funcs(funcs).ParseGlob("templates/*.html"))
+	}
 }
 
 // --- Initialization ---
@@ -267,7 +297,6 @@ func initDB() {
 }
 
 func loadConfig() {
-	_ = godotenv.Load()
 	cfg = &Config{
 		StravaID:         os.Getenv("STRAVA_CLIENT_ID"),
 		StravaSecret:     os.Getenv("STRAVA_CLIENT_SECRET"),
@@ -1130,10 +1159,10 @@ func handleSyncActivities(w http.ResponseWriter, r *http.Request) {
 // --- Main ---
 
 func main() {
+	loadConfig()
 	f := initLogger()
 	defer f.Close()
 
-	loadConfig()
 	initDB()
 	defer db.Close()
 	initValkey()

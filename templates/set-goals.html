@@ -1,40 +1,19 @@
-{{template "header.html"}}
-{{template "nav.html"}}
+{{template "header.html" }}
+{{template "nav.html" .}}
 <main>
     <h1>Set Goals</h1>
-
-    {{if len .Goals}}
-    <h2>Your Current Goals</h2>
-    <div class="current-goals">
-        {{range .Goals}}
-        <div class="goal-card">
-            <h3>{{.SportName}}</h3>
-            <p>Start Date: {{.StartDate.Format "Jan 2, 2006"}} | End Date: {{.EndDate.Format "Jan 2, 2006"}}</p>
-            <div class="goal-values" id="{{.ID.Int64}}">
-                {{if .DistanceGoal.Valid}}
-                <div class="goal-value">Distance: {{.DistanceGoal.Float64}}</div>
-                {{end}}
-                {{if .ElevationGoal.Valid}}
-                <div class="goal-value">Elevation: {{.ElevationGoal.Float64}}</div>
-                {{end}}
-                {{if .DurationGoal.Valid}}
-                <div class="goal-value">Duration: {{.DurationGoal.Float64}}</div>
-                {{end}}
-            </div>
-        </div>
-        {{end}}
-    </div>
-    {{end}}
 
     {{$isImperial := eq .MeasurementUnit "feet"}}
     {{$distanceUnit := "km"}}
     {{$elevationUnit := "m"}}
+    {{$durationUnit := "hrs"}}
     {{if $isImperial}}
     {{$distanceUnit = "miles"}}
     {{$elevationUnit = "ft"}}
     {{end}}
 
-    <p>Select the activity type, set your start and end date and set your goal. You can set a distance, elevation or duration
+    <p>Select the activity type, set your start and end date and set your goal. You can set a distance, elevation or
+        duration
         goal or all three.</p>
 
     <form hx-post="/save-goals" hx-target="#sync-ui">
@@ -46,11 +25,55 @@
                     <th>End Date</th>
                     <th>Distance ({{$distanceUnit}})</th>
                     <th>Elevation ({{$elevationUnit}})</th>
-                    <th>Duration</th>
+                    <th>Duration ({{$durationUnit}})</th>
                     <th></th>
                 </tr>
             </thead>
             <tbody>
+                {{if len .Goals }}
+                {{range $index, $goal := .Goals}}
+                <tr>
+                <div>goal</div>
+                    <!-- hidden fields -->
+                    <input type="hidden" name="goals[{{$index}}].goal_id" value="{{$goal.ID}}">
+
+                    <td>
+                        <select name="goals[{{$index}}].sport_id" required onchange="toggleElevation(this)">
+                            <option value=""></option>
+                            {{range .Sports}}
+
+                            <option value="{{.ID}}" data-has-elevation="{{.HasElevation}}" 
+                                {{if eq .ID $goal.SportId}}selected{{end}}>{{.Name}}
+                            </option>
+                            {{end}}
+                        </select>
+                    </td>
+                    <td>
+                        <input type="date" name="goals[{{$index}}].start_date" value="{{$goal.StartDate}}"
+                            id="start_date_0" required>
+                    </td>
+                    <td>
+                        <input type="date" name="goals[{{$index}}].end_date" id="end_date_0" value="{{$goal.EndDate}}"
+                            required>
+                    </td>
+                    <td>
+                        <input type="number" name="goals[{{$index}}].distance" step="1" min="0"
+                            value="{{$goal.DistanceGoal}}" placeholder="0.00">
+                    </td>
+                    <td>
+                        <input type="number" name="goals[{{$index}}].elevation" value="{{$goal.ElevationGoal}}" step="1"
+                            min="0" placeholder="0" disabled>
+                    </td>
+                    <td>
+                        <input type="text" name="goals[{{$index}}].duration" placeholder="0"
+                    </td>
+                    <td>
+                        <input type="checkbox" name="goals[{{$index}}].deleted">
+                    </td>
+                </tr>
+                {{end}}
+                {{else }}
+                <div>no goal</div>
                 <tr>
                     <td>
                         <select name="goals[0].sport_id" required onchange="toggleElevation(this)">
@@ -80,6 +103,7 @@
                         <button type="button" class="btn btn-danger" onclick="removeRow(this)">X</button>
                     </td>
                 </tr>
+                {{end}}
             </tbody>
         </table>
 
@@ -104,11 +128,11 @@
             const year = today.getFullYear();
             const startDate = today.toISOString().split('T')[0];
             const endDate = `${year}-12-31`;
-            return { startDate, endDate };
+            return {startDate, endDate};
         }
 
         function setDefaultDates(row) {
-            const { startDate, endDate } = getDefaultDates();
+            const {startDate, endDate} = getDefaultDates();
             row.querySelector('[name$=".start_date"]').value = startDate;
             row.querySelector('[name$=".end_date"]').value = endDate;
         }
@@ -157,7 +181,7 @@
             rowCount++;
         }
 
-        document.addEventListener('DOMContentLoaded', function() {
+        document.addEventListener('DOMContentLoaded', function () {
             const firstRow = document.querySelector('#goals-table tbody tr');
             if (firstRow) {
                 setDefaultDates(firstRow);

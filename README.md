@@ -36,20 +36,21 @@ docker run -d \
 
 # Distractions 
 - [ ] low bar with privacy and terms of use
-- [ ] update color scheme
 - [ ] build out landing page.
-- [ ] add user logo to navbar
 
 # MVP
 
 ## MVP: Goal Setting
-- [ ] Pre-populate existing goals in form (for editing)
+- [ ] activities page
+
+- [/] Pre-populate existing goals in form (for editing)
+    - stuggling becuase I need to pass in goals in GoalForm struct then I'll have an old goals section that will use the goalDisplay stuct
+- [ ] add new cols to form
 - [ ] Add goal_id hidden field to template rows -- setup current goals in table (this is what's missing)
 - [ ] fix user logo in nav It's broken
-- [x] Implement handleSaveGoals handler
-- [x] Add GoalForm struct to main.go
-- [x] Add "Go to Dashboard" button to template  
-- [x] Register /save-goals route
+- [ ] fix duration it's null
+- [ ] change duration to only accept hrs
+- [ ] pull in elevation_loss
 
 ## MVP: Dashboard
 - [ ] Build dashboard template showing goal progress
@@ -106,6 +107,9 @@ docker run -d \
 
 # Later
 
+- [ ] need to think through can you delete a goal? when a goal is over where do I put it? 
+    - create a way to display goals 
+
 - [ ] Sync all historical data (last 2+ years)
 - [ ] Privacy policy and terms of use
 - [ ] Expire users after X months inactivity
@@ -136,3 +140,9 @@ docker run -d \
     - [x] build out list of sports insertion query -- Support aggragate virtual
     - [x] build out display struct
 - [x] Move handlers to templates -- will likely need to refactor later.
+- [x] update color scheme
+- [x] add user logo to navbar
+- [x] Implement handleSaveGoals handler
+- [x] Add GoalForm struct to main.go
+- [x] Add "Go to Dashboard" button to template  
+- [x] Register /save-goals route
