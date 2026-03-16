@@ -17,7 +17,6 @@ import (
 	"strings"
 	"time"
 
-	reloader "github.com/MPMcIntyre/go-again"
 	"github.com/alexedwards/scs/redisstore"
 	"github.com/alexedwards/scs/v2"
 	"github.com/gomodule/redigo/redis"
@@ -28,7 +27,7 @@ import (
 // --- Types & Globals ---
 
 const (
-	KmToMeters    = 1000
+	KmToMeters    = 1000.0
 	MetersToYards = 1.09361
 	MetersToMiles = 0.000621371
 	MetersToFeet  = 3.28084
@@ -36,6 +35,9 @@ const (
 	YardsToMeters = 0.9144
 	MilesToMeters = 1609.34
 	FeetToMeters  = 0.3048
+
+	HrTosec = 3600
+	SecToHr = 1 / 3600
 )
 
 type contextKey string
@@ -121,12 +123,13 @@ type GoalDisplay struct {
 type GoalForm struct {
 	GoalID         int64     `form:"goal_id"`
 	SportID        int64     `form:"sport_id"`
-	IncludeVirtual bool      `form:"include_virtual`
+	IncludeVirtual bool      `form:"include_virtual"`
 	StartDate      time.Time `json:"start_date"`
 	EndDate        time.Time `json:"end_date"`
 	Distance       float64   `form:"distance"`
 	Elevation      float64   `form:"elevation"`
 	Duration       int       `form:"duration"`
+	Deleted        bool      `form:"deleted"`
 }
 
 type Activity struct {
@@ -146,38 +149,11 @@ var tmpl *template.Template
 
 func init() {
 	_ = godotenv.Load()
-
-	funcs := template.FuncMap{}
-
-	if os.Getenv("DEV") == "true" {
-		rel, err := reloader.New(
-			func() {
-				tmpl = template.Must(
-					template.New("").Funcs(funcs).ParseGlob(
-						"templates/*.html"))
-			},
-			9000,
-			reloader.WithLogs(true),
-		)
-		if err != nil {
-			slog.Error("Failed to setup reloader", "error", err)
-			panic(err)
-		}
-		rel.Add("templates")
-
-		funcs = rel.TemplateFunc()
-		tmpl = template.Must(
-			template.New("").Funcs(funcs).ParseGlob("templates/*.html"))
-	} else {
-		funcs := template.FuncMap{
-			"LiveReload": func() template.HTML { return "" },
-		}
-		tmpl = template.Must(
-			template.New("").Funcs(funcs).ParseGlob("templates/*.html"))
-	}
+	tmpl = template.Must(template.ParseGlob("templates/*.html"))
 }
 
 func executeTemplate(w http.ResponseWriter, name string, data interface{}) {
+	w.Header().Set("Content-Type", "text/html")
 	err := tmpl.ExecuteTemplate(w, name, data)
 	if err != nil {
 		slog.Error("Template error", "template", name, "error", err)
@@ -232,76 +208,76 @@ func initDB() {
 	db.SetMaxOpenConns(1)
 
 	usersQuery := `
-    CREATE TABLE IF NOT EXISTS users (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        strava_id INTEGER UNIQUE,
-        strava_username TEXT,
-        access_token TEXT,
-        refresh_token TEXT,
-        expires_at INTEGER,
-        profile_img TEXT,
-        timezone TEXT,
-		measurement_unit TEXT);`
+		CREATE TABLE IF NOT EXISTS users (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			strava_id INTEGER UNIQUE,
+			strava_username TEXT,
+			access_token TEXT,
+			refresh_token TEXT,
+			expires_at INTEGER,
+			profile_img TEXT,
+			timezone TEXT,
+			measurement_unit TEXT);`
 	if _, err := db.Exec(usersQuery); err != nil {
 		slog.Error("Failed to create users table", "fatal", err)
 		panic(err)
 	}
 
 	sportsQuery := `
-    CREATE TABLE IF NOT EXISTS sports (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-		name TEXT UNIQUE,
-		strava_sport_id TEXT,
-		has_elevation BOOLEAN,
-		image_URL TEXT
-	);`
+		CREATE TABLE IF NOT EXISTS sports (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			name TEXT UNIQUE,
+			strava_sport_id TEXT,
+			has_elevation BOOLEAN,
+			image_URL TEXT
+		);`
 	if _, err := db.Exec(sportsQuery); err != nil {
 		slog.Error("Failed to create sports table", "fatal", err)
 		panic(err)
 	}
 
 	insertDefaultsQuery := `
-			INSERT OR IGNORE INTO sports (name, strava_sport_id, has_elevation) VALUES 
-			('Cycling', 'Ride', 1),
-			('Running', 'Run', 1),
-			('Swimming', 'Swim', 0);`
+				INSERT OR IGNORE INTO sports (name, strava_sport_id, has_elevation) VALUES 
+				('Cycling', 'Ride', 1),
+				('Running', 'Run', 1),
+				('Swimming', 'Swim', 0);`
 	_, err = db.Exec(insertDefaultsQuery)
 	if err != nil {
 		log.Fatalf("Failed to seed default sports: %v", err)
 	}
 
 	goalsQuery := `
-    CREATE TABLE IF NOT EXISTS goals (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-		start_date DATE,
-		end_date DATE,
-        include_virtual BOOLEAN,
-		user_strava_id INTEGER,
-        sport_id INTEGER,
-		elevation_goal REAL,
-		distance_goal REAL,
-		duration_goal INTEGER,
-		FOREIGN KEY(user_strava_id) REFERENCES users(strava_id)
-		FOREIGN KEY(sport_id) REFERENCES sports(id)
-		UNIQUE(start_date, end_date, user_strava_id, sport_id, include_virtual)
-		);`
+		CREATE TABLE IF NOT EXISTS goals (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			start_date DATE,
+			end_date DATE,
+			include_virtual BOOLEAN,
+			user_strava_id INTEGER,
+			sport_id INTEGER,
+			elevation_goal REAL,
+			distance_goal REAL,
+			duration_goal INTEGER,
+			FOREIGN KEY(user_strava_id) REFERENCES users(strava_id)
+			FOREIGN KEY(sport_id) REFERENCES sports(id)
+			UNIQUE(start_date, end_date, user_strava_id, sport_id, include_virtual)
+			);`
 	if _, err := db.Exec(goalsQuery); err != nil {
 		slog.Error("Failed to create goals table", "fatal", err)
 		panic(err)
 	}
 
 	acitiviesQuery := `
-	   CREATE TABLE IF NOT EXISTS user_activities (
-	       	id INTEGER PRIMARY KEY AUTOINCREMENT,
-			strava_activity_id INTEGER UNIQUE,
-			user_strava_id INTEGER,
-			activity_type TEXT,
-			start_date INTEGER,
-			distance REAL,
-			elevation_gain REAL,
-			duration INTEGER,
-			FOREIGN KEY(user_strava_id) REFERENCES users(strava_id)
-		);`
+		   CREATE TABLE IF NOT EXISTS user_activities (
+				id INTEGER PRIMARY KEY AUTOINCREMENT,
+				strava_activity_id INTEGER UNIQUE,
+				user_strava_id INTEGER,
+				activity_type TEXT,
+				start_date INTEGER,
+				distance REAL,
+				elevation_gain REAL,
+				duration INTEGER,
+				FOREIGN KEY(user_strava_id) REFERENCES users(strava_id)
+			);`
 	if _, err := db.Exec(acitiviesQuery); err != nil {
 		slog.Error("Failed to create user_activities table", "fatal", err)
 		panic(err)
@@ -328,22 +304,22 @@ func updateOrCreateUser(auth StravaAuth) (bool, error) {
 	}
 
 	query := `
-    INSERT INTO users (
-		strava_id, 
-		strava_username,
-		access_token, 
-		refresh_token, 
-		expires_at, 
-		profile_img, 
-		measurement_unit
-	) 
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT(strava_id) DO UPDATE SET
-        access_token = excluded.access_token,
-        refresh_token = excluded.refresh_token,
-        expires_at = excluded.expires_at,
-        profile_img = excluded.profile_img,
-		strava_username = excluded.strava_username;`
+		INSERT INTO users (
+			strava_id, 
+			strava_username,
+			access_token, 
+			refresh_token, 
+			expires_at, 
+			profile_img, 
+			measurement_unit
+		) 
+		VALUES (?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(strava_id) DO UPDATE SET
+			access_token = excluded.access_token,
+			refresh_token = excluded.refresh_token,
+			expires_at = excluded.expires_at,
+			profile_img = excluded.profile_img,
+			strava_username = excluded.strava_username;`
 	_, err = db.Exec(
 		query,
 		auth.Athlete.ID,
@@ -387,15 +363,15 @@ func bulkSaveActivities(db *sql.DB, activities []Activity, userStravaID int64) e
 		)
 	}
 	query := fmt.Sprintf(`
-        INSERT INTO user_activities (
-            strava_activity_id, 
-            user_strava_id, 
-            activity_type, 
-            start_date, 
-            distance, 
-            elevation_gain
-        ) VALUES %s
-        ON CONFLICT(strava_activity_id) DO NOTHING;`,
+			INSERT INTO user_activities (
+				strava_activity_id, 
+				user_strava_id, 
+				activity_type, 
+				start_date, 
+				distance, 
+				elevation_gain
+			) VALUES %s
+			ON CONFLICT(strava_activity_id) DO NOTHING;`,
 		strings.Join(placeholders, ","))
 
 	result, err := db.Exec(query, args...)
@@ -413,11 +389,11 @@ func bulkSaveActivities(db *sql.DB, activities []Activity, userStravaID int64) e
 
 func updateUserTokens(user StravaAuth, freshTokens StravaRefreshResponse) error {
 	query := `
-	UPDATE users 
-    SET access_token = ?, 
-        refresh_token = ?, 
-        expires_at = ?
-    WHERE strava_id = ?`
+		UPDATE users 
+		SET access_token = ?, 
+			refresh_token = ?, 
+			expires_at = ?
+		WHERE strava_id = ?`
 	_, err := db.Exec(query, freshTokens.AccessToken, freshTokens.RefreshToken, freshTokens.ExpiresAt, user.Athlete.ID)
 	return err
 }
@@ -426,9 +402,9 @@ func updateSyncMeta(user StravaAuth) error {
 	slog.Info("updating user sync meta", "strava_id", user.Athlete.ID, "tz", user.Timezone)
 
 	query := `
-        UPDATE users 
-        SET timezone = ?
-        WHERE strava_id = ?`
+			UPDATE users 
+			SET timezone = ?
+			WHERE strava_id = ?`
 
 	result, err := db.Exec(query, user.Timezone, user.Athlete.ID)
 	if err != nil {
@@ -465,12 +441,12 @@ func fetchSports() ([]Sport, error) {
 	var sports []Sport
 	rows, err := db.Query(
 		`SELECT 
-			id,
-			name,
-			strava_sport_id,
-			has_elevation,
-			image_URL
-		FROM sports`)
+				id,
+				name,
+				strava_sport_id,
+				has_elevation,
+				image_URL
+			FROM sports`)
 	if err != nil {
 		slog.Error("Failed to Fetch Sports", "error", err)
 		return nil, err
@@ -501,19 +477,19 @@ func fetchUserGoals(user StravaAuth) ([]Goal, error) {
 	var goals []Goal
 	rows, err := db.Query(
 		`SELECT 
-			id,
-			start_date,
-			end_date,
-			include_virtual,
-			user_strava_id,
-			sport_id,
-			elevation_goal,
-			distance_goal,
-			duration_goal
-		FROM goals 
-		WHERE user_strava_id = ?
-			AND end_date > datetime('now')
-		ORDER BY end_date DESC;`,
+				id,
+				start_date,
+				end_date,
+				include_virtual,
+				user_strava_id,
+				sport_id,
+				elevation_goal,
+				distance_goal,
+				duration_goal
+			FROM goals 
+			WHERE user_strava_id = ?
+				AND end_date > datetime('now')
+			ORDER BY end_date DESC;`,
 		user.Athlete.ID)
 	if err != nil {
 		slog.Error("Failed to Fetch Goals", "error", err)
@@ -559,15 +535,15 @@ func requireLogin(next http.Handler) http.Handler {
 		var user StravaAuth
 		err := db.QueryRow(
 			`SELECT 
-				strava_id, 
-				strava_username, 
-				refresh_token, 
-				access_token, 
-				profile_img, 
-				COALESCE(timezone, '') as timezone,
-				measurement_unit
-			FROM users 
-			WHERE strava_id = ?`,
+					strava_id, 
+					strava_username, 
+					refresh_token, 
+					access_token, 
+					profile_img, 
+					COALESCE(timezone, '') as timezone,
+					measurement_unit
+				FROM users 
+				WHERE strava_id = ?`,
 			stravaID).Scan(
 			&user.Athlete.ID,
 			&user.Athlete.Username,
@@ -727,9 +703,9 @@ func syncActivities(user StravaAuth) ([]Activity, error) {
 	var syncUnix sql.NullInt64
 	err = db.QueryRow(
 		`SELECT 
-			MAX(start_date)
-		FROM user_activities 
-		WHERE user_strava_id = ?`,
+				MAX(start_date)
+			FROM user_activities 
+			WHERE user_strava_id = ?`,
 		user.Athlete.ID).Scan(
 		&syncUnix)
 
@@ -980,6 +956,17 @@ func errorPage(w http.ResponseWriter, r *http.Request) {
 
 func handleSaveGoals(w http.ResponseWriter, r *http.Request) {
 
+	logAndFail := func(err error) {
+		slog.Error("Couldn't convert goal param", "error", err)
+		fmt.Fprintf(w, `
+					<div>
+						<button hx-post="/" hx-target="#sync-ui" hx-indicator="#loading">Save</button>
+						<p>Failed to save!</p>
+					</div>
+				`)
+		http.Error(w, "Failed to save form", 400)
+	}
+
 	user, ok := r.Context().Value(userContextKey).(StravaAuth)
 	if !ok {
 		slog.Error("Context fetch failed")
@@ -1008,46 +995,35 @@ func handleSaveGoals(w http.ResponseWriter, r *http.Request) {
 		if startDateStr != "" {
 			startDate, err = time.Parse("2006-01-02", startDateStr)
 			if err != nil {
-				slog.Error("Failed to parse start_date for goals", "error", err)
-				fmt.Fprintf(w, `
-				<div>
-					<button hx-post="/" hx-target="#sync-ui" hx-indicator="#loading">Save</button>
-					<p>Failed to save!</p>
-				</div>
-			`)
+				logAndFail(err)
 				return
 			}
 		}
 		endDateStr := r.Form.Get(fmt.Sprintf("goals[%d].end_date", i))
 		endDate, err := time.Parse("2006-01-02", endDateStr)
 		if err != nil {
-			slog.Error("Failed to parse end_date for goals", "error", err)
-			fmt.Fprintf(w, `
-				<div>
-					<button hx-post="/" hx-target="#sync-ui" hx-indicator="#loading">Save</button>
-					<p>Failed to save!</p>
-				</div>
-			`)
+			logAndFail(err)
 			return
 		}
 		distanceStr := r.Form.Get(fmt.Sprintf("goals[%d].distance", i))
-		distance, _ := strconv.ParseFloat(distanceStr, 64)
+		distance, err := strconv.ParseFloat(distanceStr, 64)
+		if err != nil {
+			logAndFail(err)
+			return
+		}
 		elevationStr := r.Form.Get(fmt.Sprintf("goals[%d].elevation", i))
 		elevation, _ := strconv.ParseFloat(elevationStr, 64)
 		durationStr := r.Form.Get(fmt.Sprintf("goals[%d].duration", i))
-
-		var durationMinutes int
-		if durationStr != "" {
-			if strings.Contains(durationStr, ":") {
-				parts := strings.Split(durationStr, ":")
-				if len(parts) == 2 {
-					hours, _ := strconv.Atoi(parts[0])
-					mins, _ := strconv.Atoi(parts[1])
-					durationMinutes = hours*60 + mins
-				}
-			} else {
-				durationMinutes, _ = strconv.Atoi(durationStr)
-			}
+		duration, err := strconv.Atoi(durationStr)
+		if err != nil {
+			logAndFail(err)
+			return
+		}
+		deletedStr := r.Form.Get(fmt.Sprintf("goals[%d].deleted", i))
+		deleted, err := strconv.ParseBool(deletedStr)
+		if err != nil {
+			logAndFail(err)
+			return
 		}
 
 		formattedGoal := GoalForm{
@@ -1058,7 +1034,8 @@ func handleSaveGoals(w http.ResponseWriter, r *http.Request) {
 			EndDate:        endDate,
 			Distance:       distance * KmToMeters,
 			Elevation:      elevation,
-			Duration:       durationMinutes * 60,
+			Duration:       duration * HrTosec,
+			Deleted:        deleted,
 		}
 		if user.Athlete.MeasurementUnit == "feet" {
 			formattedGoal.Distance = formattedGoal.Distance * MilesToMeters
@@ -1091,6 +1068,15 @@ func handleSaveGoals(w http.ResponseWriter, r *http.Request) {
 				formattedGoal.Duration,
 			}
 
+		} else if deleted == true {
+			query = `
+				DELETE FROM  goals 
+				WHERE id = ?
+					AND user_strava_id = ?`
+			args = []interface{}{
+				formattedGoal.GoalID,
+				user.Athlete.ID,
+			}
 		} else {
 			query = `
 				UPDATE goals 
@@ -1102,7 +1088,7 @@ func handleSaveGoals(w http.ResponseWriter, r *http.Request) {
 					elevation_goal = ?,
 					distance_goal = ?,
 					duration_goal = ?
-				WHERE goal_id = ?
+				WHERE id = ?
 					AND user_strava_id = ?`
 
 			args = []interface{}{
@@ -1128,6 +1114,7 @@ func handleSaveGoals(w http.ResponseWriter, r *http.Request) {
 					<p>Failed to save!</p>
 				</div>
 			`)
+			http.Error(w, "Internal Server Error", 500)
 			return
 		}
 
@@ -1195,6 +1182,6 @@ func main() {
 	mux.Handle("/save-goals", requireLogin(http.HandlerFunc(handleSaveGoals)))
 	mux.Handle("/sync", requireLogin(http.HandlerFunc(handleSyncActivities)))
 
-	slog.Info("Server starting on :8090")
-	log.Fatal(http.ListenAndServe(":8090", sessionManager.LoadAndSave(mux)))
+	slog.Info("Server starting on :8080 use :8090 proxy")
+	log.Fatal(http.ListenAndServe(":8080", sessionManager.LoadAndSave(mux)))
 }

@@ -68,7 +68,7 @@
                             min="0" placeholder="{{$elevationUnit}}" disabled>
                     </td>
                     <td>
-                        <input type="text" name="goals[{{$index}}].duration" placeholder="{{$durationUnit}}">
+                        <input type="number" min="0" name="goals[{{$index}}].duration" placeholder="{{$durationUnit}}">
                     </td>
                     <td>
                         <input type="checkbox" name="goals[{{$index}}].deleted">
@@ -100,9 +100,7 @@
                             placeholder="{{$elevationUnit}}" disabled>
                     </td>
                     <td>
-                        <input type="text" name="goals[0].duration" placeholder="{{$durationUnit}}"
-                            pattern="[0-9]+:?[0-9]*">
-                    </td>
+                        <input type="number" min="0" name="goals[0].duration" placeholder="{{$durationUnit}}"> </td>
                     <td>
                         <button type="button" class="btn btn-danger" onclick="removeRow(this)">X</button>
                     </td>
@@ -171,7 +169,7 @@
                     <input type="number" name="goals[${rowCount}].distance" step="1" min="0" placeholder="{{$distanceUnit}}">
                 </td>
                 <td>
-                    <input type="number" name="goals[${rowCount}].elevation" value="0" step="1" min="0" placeholder="{{$elevantionUnit}}" disabled>
+                    <input type="number" name="goals[${rowCount}].elevation" value="0" step="1" min="0" placeholder="{{$elevationUnit}}" disabled>
                 </td>
                 <td>
                     <input type="number" name="goals[${rowCount}].duration" value="0" min="0" placeholder="{{$durationUnit}}" >
