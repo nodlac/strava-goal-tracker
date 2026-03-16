@@ -41,16 +41,10 @@ docker run -d \
 # MVP
 
 ## MVP: Goal Setting
-- [ ] activities page
 
-- [/] Pre-populate existing goals in form (for editing)
-    - stuggling becuase I need to pass in goals in GoalForm struct then I'll have an old goals section that will use the goalDisplay stuct
-- [ ] add new cols to form
-- [ ] Add goal_id hidden field to template rows -- setup current goals in table (this is what's missing)
-- [ ] fix user logo in nav It's broken
-- [ ] fix duration it's null
-- [ ] change duration to only accept hrs
-- [ ] pull in elevation_loss
+- [/] fix form conversions anything that needs conversion need to pullin from form then convert
+- [ ] Goal history page (past/completed goals in read-only table)
+- [ ] activities page
 
 ## MVP: Dashboard
 - [ ] Build dashboard template showing goal progress
@@ -146,3 +140,6 @@ docker run -d \
 - [x] Add GoalForm struct to main.go
 - [x] Add "Go to Dashboard" button to template  
 - [x] Register /save-goals route
+- [x] change duration to only accept hrs
+- [x] fix user logo in nav It's broken
+- [x] Add goal_id hidden field to template rows -- setup current goals in table (this is what's missing)

@@ -28,6 +28,7 @@
                     <th>Distance ({{$distanceUnit}})</th>
                     <th>Elevation ({{$elevationUnit}})</th>
                     <th>Duration ({{$durationUnit}})</th>
+                    <th>Include Virtual</th>
                     <th></th>
                 </tr>
             </thead>
@@ -35,7 +36,6 @@
                 {{if len .Goals }}
                 {{range $index, $goal := .Goals}}
                 <tr>
-                    <div>goal</div>
                     <!-- hidden fields -->
                     <input type="hidden" name="goals[{{$index}}].goal_id" value="{{$goal.ID}}">
 
@@ -61,50 +61,23 @@
                     </td>
                     <td>
                         <input type="number" name="goals[{{$index}}].distance" step="1" min="0"
-                            value="{{$goal.DistanceGoal}}" placeholder="{{$durationUnit}}">
+                            value="{{$goal.DistanceGoal.Float64}}" placeholder="{{$durationUnit}}">
                     </td>
                     <td>
                         <input type="number" name="goals[{{$index}}].elevation" value="{{$goal.ElevationGoal}}" step="1"
-                            min="0" placeholder="{{$elevationUnit}}" disabled>
+                            min="0" placeholder="{{$elevationUnit}}">
                     </td>
                     <td>
                         <input type="number" min="0" name="goals[{{$index}}].duration" placeholder="{{$durationUnit}}">
+                    </td>
+                    <td>
+                        <input type="checkbox" name="goals[{{$index}}].include_virtual" checked>
                     </td>
                     <td>
                         <input type="checkbox" name="goals[{{$index}}].deleted">
                     </td>
                 </tr>
                 {{end}}
-                {{else }}
-                <div>no goal</div>
-                <tr>
-                    <td>
-                        <select name="goals[0].sport_id" required onchange="toggleElevation(this)">
-                            <option value="">Select Sport</option>
-                            {{range .Sports}}
-                            <option value="{{.ID}}" data-has-elevation="{{.HasElevation}}">{{.Name}}</option>
-                            {{end}}
-                        </select>
-                    </td>
-                    <td>
-                        <input type="date" name="goals[0].start_date" id="start_date_0" required>
-                    </td>
-                    <td>
-                        <input type="date" name="goals[0].end_date" id="end_date_0" required>
-                    </td>
-                    <td>
-                        <input type="number" name="goals[0].distance" step="1" min="0" placeholder="{{$distanceUnit}}">
-                    </td>
-                    <td>
-                        <input type="number" name="goals[0].elevation" value="0" step="1" min="0"
-                            placeholder="{{$elevationUnit}}" disabled>
-                    </td>
-                    <td>
-                        <input type="number" min="0" name="goals[0].duration" placeholder="{{$durationUnit}}"> </td>
-                    <td>
-                        <button type="button" class="btn btn-danger" onclick="removeRow(this)">X</button>
-                    </td>
-                </tr>
                 {{end}}
             </tbody>
         </table>
@@ -121,7 +94,7 @@
         this in the profile settings.</p>
 
     <script>
-        let rowCount = 1;
+        let rowCount = -100;
 
         const sportOptions = `{{range .Sports}}<option value="{{.ID}}" data-has-elevation="{{.HasElevation}}">{{.Name}}</option>{{end}}`;
 
@@ -145,7 +118,9 @@
             const selectedOption = selectEl.options[selectEl.selectedIndex];
             const hasElevation = selectedOption.dataset.hasElevation === "true";
 
-            elevationInput.value = 0;
+            if (!hasElevation) {
+                elevationInput.value = 0;
+            }
             elevationInput.disabled = !hasElevation;
         }
 
@@ -153,6 +128,8 @@
             const tbody = document.querySelector('#goals-table tbody');
             const tr = document.createElement('tr');
             tr.innerHTML = `
+
+                        <input type="hidden" value="false" name="goals[${rowCount}].deleted">
                 <td>
                     <select name="goals[${rowCount}].sport_id" required onchange="toggleElevation(this)">
                         <option value="">Select Sport</option>
@@ -169,10 +146,13 @@
                     <input type="number" name="goals[${rowCount}].distance" step="1" min="0" placeholder="{{$distanceUnit}}">
                 </td>
                 <td>
-                    <input type="number" name="goals[${rowCount}].elevation" value="0" step="1" min="0" placeholder="{{$elevationUnit}}" disabled>
+                    <input type="number" name="goals[${rowCount}].elevation"  step="1" min="0" placeholder="{{$elevationUnit}}">
                 </td>
                 <td>
-                    <input type="number" name="goals[${rowCount}].duration" value="0" min="0" placeholder="{{$durationUnit}}" >
+                    <input type="number" name="goals[${rowCount}].duration"  min="0" placeholder="{{$durationUnit}}" >
+                </td>
+                <td>
+                    <input type="checkbox" name="goals[${rowCount}].include_virtual" checked>
                 </td>
                 <td>
                     <button type="button" class="btn btn-danger" onclick="removeRow(this)">X</button>

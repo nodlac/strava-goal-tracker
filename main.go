@@ -488,7 +488,7 @@ func fetchUserGoals(user StravaAuth) ([]Goal, error) {
 				duration_goal
 			FROM goals 
 			WHERE user_strava_id = ?
-				AND end_date > datetime('now')
+				-- AND end_date > datetime('now')
 			ORDER BY end_date DESC;`,
 		user.Athlete.ID)
 	if err != nil {
@@ -956,8 +956,8 @@ func errorPage(w http.ResponseWriter, r *http.Request) {
 
 func handleSaveGoals(w http.ResponseWriter, r *http.Request) {
 
-	logAndFail := func(err error) {
-		slog.Error("Couldn't convert goal param", "error", err)
+	logAndFail := func(paramName string, err error) {
+		slog.Error(fmt.Sprintf("Couldn't convert goal param: %s", paramName), "error", err)
 		fmt.Fprintf(w, `
 					<div>
 						<button hx-post="/" hx-target="#sync-ui" hx-indicator="#loading">Save</button>
@@ -989,26 +989,27 @@ func handleSaveGoals(w http.ResponseWriter, r *http.Request) {
 		sportID, _ := strconv.ParseInt(sportIDStr, 10, 64)
 		goalIDStr := r.Form.Get(fmt.Sprintf("goals[%d].goal_id", i))
 		goalID, _ := strconv.ParseInt(goalIDStr, 10, 64)
-		includeVirtual, _ := strconv.ParseBool("goals[%d].include_virtual")
+		includeVirtual, err := strconv.ParseBool("goals[%d].include_virtual")
+		logAndFail("includeVirtual", err)
 		startDateStr := r.Form.Get(fmt.Sprintf("goals[%d].start_date", i))
 		startDate := time.Date(time.Now().Year(), 1, 1, 0, 0, 0, 0, time.UTC)
 		if startDateStr != "" {
 			startDate, err = time.Parse("2006-01-02", startDateStr)
 			if err != nil {
-				logAndFail(err)
+				logAndFail("startDate", err)
 				return
 			}
 		}
 		endDateStr := r.Form.Get(fmt.Sprintf("goals[%d].end_date", i))
 		endDate, err := time.Parse("2006-01-02", endDateStr)
 		if err != nil {
-			logAndFail(err)
+			logAndFail("endDate", err)
 			return
 		}
 		distanceStr := r.Form.Get(fmt.Sprintf("goals[%d].distance", i))
 		distance, err := strconv.ParseFloat(distanceStr, 64)
 		if err != nil {
-			logAndFail(err)
+			logAndFail("distance", err)
 			return
 		}
 		elevationStr := r.Form.Get(fmt.Sprintf("goals[%d].elevation", i))
@@ -1016,13 +1017,12 @@ func handleSaveGoals(w http.ResponseWriter, r *http.Request) {
 		durationStr := r.Form.Get(fmt.Sprintf("goals[%d].duration", i))
 		duration, err := strconv.Atoi(durationStr)
 		if err != nil {
-			logAndFail(err)
+			logAndFail("duration", err)
 			return
 		}
-		deletedStr := r.Form.Get(fmt.Sprintf("goals[%d].deleted", i))
-		deleted, err := strconv.ParseBool(deletedStr)
+		deleted, err := strconv.ParseBool("goals[%d].include_virtual")
 		if err != nil {
-			logAndFail(err)
+			logAndFail("deleted", err)
 			return
 		}
 
@@ -1056,7 +1056,6 @@ func handleSaveGoals(w http.ResponseWriter, r *http.Request) {
 					distance_goal,
 					duration_goal
 				) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-
 			args = []interface{}{
 				user.Athlete.ID,
 				formattedGoal.StartDate,
@@ -1104,7 +1103,8 @@ func handleSaveGoals(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
-		_, err = db.Exec(query, args...)
+		resp, err := db.Exec(query, args...)
+		slog.Info("Attempted save goal", "info", resp)
 
 		if err != nil {
 			slog.Error("Failed to save goals", "error", err)
