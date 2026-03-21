@@ -159,6 +159,12 @@ label {
     margin-bottom: 20px;
 }
 
+.form-actions {
+    width: 100%;
+    display: flex;
+    justify-content: space-between;
+}
+
 /*-bottom: 20 Goal Card */
 .goal-card {
     border: 1px solid var(--border-color);

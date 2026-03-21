@@ -37,12 +37,13 @@ docker run -d \
 # Distractions 
 - [ ] low bar with privacy and terms of use
 - [ ] build out landing page.
+- [ ] could cache the user's goals / dashboard queries I'd do that once we see if compute is heavy could even cache it for 30 min or something 
 
 # MVP
 
 ## MVP: Goal Setting
 
-- [/] fix form conversions anything that needs conversion need to pullin from form then convert
+- [ ] Need to handle nulls in goals and validate that at least one is set
 - [ ] Goal history page (past/completed goals in read-only table)
 - [ ] activities page
 
@@ -143,3 +144,5 @@ docker run -d \
 - [x] change duration to only accept hrs
 - [x] fix user logo in nav It's broken
 - [x] Add goal_id hidden field to template rows -- setup current goals in table (this is what's missing)
+- [x] fix form conversions anything that needs conversion need to pullin from form then convert
+- [x] clean up form save on left add right remove extra save
