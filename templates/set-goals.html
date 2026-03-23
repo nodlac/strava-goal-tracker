@@ -36,6 +36,7 @@
                 {{range $index, $goal := .Goals}}
                 <tr>
                     <!-- hidden fields -->
+                    <input type="hidden" name="goals[{{$index}}].key" value="{{$index}}">
                     <input type="hidden" name="goals[{{$index}}].goal_id" value="{{$goal.ID}}">
 
                     <td>
@@ -60,14 +61,14 @@
                     </td>
                     <td>
                         <input type="number" name="goals[{{$index}}].distance" step="1" min="0"
-                            value="{{$goal.DistanceGoal.Float64}}" placeholder="{{$durationUnit}}">
+                            value="{{$goal.DistanceGoal.Float64}}" placeholder="{{$distanceUnit}}">
                     </td>
                     <td>
-                        <input type="number" name="goals[{{$index}}].elevation" value="{{$goal.ElevationGoal}}" step="1"
+                        <input type="number" name="goals[{{$index}}].elevation" value="{{$goal.ElevationGoal.Float64}}" step="1"
                             min="0" placeholder="{{$elevationUnit}}">
                     </td>
                     <td>
-                        <input type="number" min="0" name="goals[{{$index}}].duration" placeholder="{{$durationUnit}}">
+                        <input type="number" min="0" name="goals[{{$index}}].duration" placeholder="{{$durationUnit.Float64}}">
                     </td>
                     <td>
                         <input type="checkbox" name="goals[{{$index}}].include_virtual" checked>
@@ -97,7 +98,7 @@
         this in the profile settings.</p>
 
     <script>
-        let rowCount = -100;
+        let rowCount = {{len .Goals}};
 
         const sportOptions = `{{range .Sports}}<option value="{{.ID}}" data-has-elevation="{{.HasElevation}}">{{.Name}}</option>{{end}}`;
 
@@ -131,8 +132,7 @@
             const tbody = document.querySelector('#goals-table tbody');
             const tr = document.createElement('tr');
             tr.innerHTML = `
-
-                        <input type="hidden" value="false" name="goals[${rowCount}].deleted">
+                    <input type="hidden" value="${rowCount}" name="goals[${rowCount}].key">
                 <td>
                     <select name="goals[${rowCount}].sport_id" required onchange="toggleElevation(this)">
                         <option value="">Select Sport</option>

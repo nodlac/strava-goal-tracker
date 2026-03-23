@@ -123,6 +123,7 @@ type GoalDisplay struct {
 }
 
 type GoalForm struct {
+	key            int64     `schema:"key"`
 	GoalID         int64     `schema:"goal_id"`
 	SportID        int64     `schema:"sport_id"`
 	IncludeVirtual bool      `schema:"include_virtual"`
@@ -130,7 +131,7 @@ type GoalForm struct {
 	EndDate        time.Time `schema:"end_date"`
 	Distance       *float64  `schema:"distance"`
 	Elevation      *float64  `schema:"elevation"`
-	Duration       *int      `schema:"duration"`
+	Duration       *float64  `schema:"duration"`
 	Deleted        bool      `schema:"deleted"`
 }
 
@@ -1014,9 +1015,29 @@ func handleSaveGoals(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
+		elevation := 0.0
+		if g.Elevation != nil {
+			elevation = *g.Elevation
+		}
+
+		distance := 0.0
+		if g.Distance != nil {
+			distance = *g.Distance
+		}
+		duration := 0.0
+		if g.Duration != nil {
+			duration = *g.Duration
+		}
+
+		if distance+elevation+float64(duration) == 0 {
+			w.WriteHeader(http.StatusBadRequest)
+			fmt.Fprint(w, "<div><p>No goals received</p></div>")
+			return
+		}
+
 		var query string
 		var args []interface{}
-		if g.GoalID < 0 {
+		if g.GoalID == 0 {
 			query = `
 				INSERT INTO goals (
 					user_strava_id,
@@ -1034,9 +1055,9 @@ func handleSaveGoals(w http.ResponseWriter, r *http.Request) {
 				g.EndDate,
 				g.IncludeVirtual,
 				g.SportID,
-				g.Elevation,
-				g.Distance,
-				g.Duration,
+				elevation,
+				distance,
+				duration,
 			}
 
 		} else if g.Deleted == true {
@@ -1067,9 +1088,9 @@ func handleSaveGoals(w http.ResponseWriter, r *http.Request) {
 				g.EndDate,
 				g.IncludeVirtual,
 				g.SportID,
-				g.Elevation,
-				g.Distance,
-				g.Duration,
+				elevation,
+				distance,
+				duration,
 				g.GoalID,
 				user.Athlete.ID,
 			}
