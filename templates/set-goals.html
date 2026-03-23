@@ -15,7 +15,6 @@
     <p>Select the activity type, set your start and end date and set your goal. You can set a distance, elevation or
         duration
         goal or all three.</p>
-
     {{.Goals}}
 
     <form hx-post="/save-goals" hx-target="#sync-ui">
@@ -29,7 +28,7 @@
                     <th>Elevation ({{$elevationUnit}})</th>
                     <th>Duration ({{$durationUnit}})</th>
                     <th>Include Virtual</th>
-                    <th></th>
+                    <th>Delete</th>
                 </tr>
             </thead>
             <tbody>
@@ -42,7 +41,7 @@
                     <td>
                         <select name="goals[{{$index}}].sport_id" required onchange="toggleElevation(this)">
                             <option value=""></option>
-                            {{range .Sports}}
+                            {{range $.Sports}}
 
                             <option value="{{.ID}}" data-has-elevation="{{.HasElevation}}" {{if eq .ID
                                 $goal.SportId}}selected{{end}}>
@@ -82,9 +81,13 @@
             </tbody>
         </table>
 
-        <button type="button" class="btn btn-secondary" onclick="addRow()">+ Add Goal</button>
-        <button type="submit" class="btn btn-primary">Save Goals</button>
+        <div class="form-actions">
+            <button type="submit" class="btn btn-primary">Save Goals</button>
+            <button type="button" class="btn btn-secondary" onclick="addRow()">Add Goal</button>
+        </div>
     </form>
+
+    <div id="form-error" class="error-message" style="display: none; color: red; margin: 10px 0;"></div>
 
     <div id="sync-ui">
         <span id="loading" class="htmx-indicator">Syncing...</span>
@@ -169,6 +172,59 @@
                 setDefaultDates(firstRow);
             }
         });
+
+        function validateGoals() {
+            const rows = document.querySelectorAll('#goals-table tbody tr');
+            const errors = [];
+
+            for (const row of rows) {
+                const sportSelect = row.querySelector('select[name*="sport_id"]');
+                const startDate = row.querySelector('input[name*=".start_date"]');
+                const endDate = row.querySelector('input[name*=".end_date"]');
+                const distance = row.querySelector('input[name*=".distance"]');
+                const elevation = row.querySelector('input[name*=".elevation"]');
+                const duration = row.querySelector('input[name*=".duration"]');
+
+                if (!sportSelect || sportSelect.value === '') {
+                    continue;
+                }
+
+                if (startDate && endDate && startDate.value && endDate.value) {
+                    if (new Date(startDate.value) > new Date(endDate.value)) {
+                        errors.push('Start date must be before end date');
+                    }
+                }
+
+                const hasGoal = (distance && distance.value && parseFloat(distance.value) > 0) ||
+                    (elevation && elevation.value && parseFloat(elevation.value) > 0) ||
+                    (duration && duration.value && parseFloat(duration.value) > 0);
+
+                if (!hasGoal) {
+                    errors.push('Each goal must have at least one target: distance, elevation, or duration');
+                }
+            }
+
+            if (rows.length > 0 && !document.querySelector('select[name*="sport_id"]')?.value) {
+                errors.push('Please select a sport for at least one goal');
+            }
+
+            return errors;
+        }
+
+        const form = document.querySelector('form[hx-post="/save-goals"]');
+        if (form) {
+            form.addEventListener('htmx:beforeRequest', function (e) {
+                const errorDiv = document.getElementById('form-error');
+                const errors = validateGoals();
+                if (errors.length > 0) {
+                    e.preventDefault();
+                    errorDiv.innerHTML = errors.map(e => `<div>${e}</div>`).join('');
+                    errorDiv.style.display = 'block';
+                    return false;
+                }
+                errorDiv.style.display = 'none';
+            });
+        }
 
         function removeRow(btn) {
             const row = btn.closest('tr');
