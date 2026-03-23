@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strconv"
 	"strings"
 	"time"
@@ -20,6 +21,7 @@ import (
 	"github.com/alexedwards/scs/redisstore"
 	"github.com/alexedwards/scs/v2"
 	"github.com/gomodule/redigo/redis"
+	"github.com/gorilla/schema"
 	"github.com/joho/godotenv"
 	_ "modernc.org/sqlite"
 )
@@ -121,15 +123,19 @@ type GoalDisplay struct {
 }
 
 type GoalForm struct {
-	GoalID         int64     `form:"goal_id"`
-	SportID        int64     `form:"sport_id"`
-	IncludeVirtual bool      `form:"include_virtual"`
-	StartDate      time.Time `json:"start_date"`
-	EndDate        time.Time `json:"end_date"`
-	Distance       float64   `form:"distance"`
-	Elevation      float64   `form:"elevation"`
-	Duration       int       `form:"duration"`
-	Deleted        bool      `form:"deleted"`
+	GoalID         int64     `schema:"goal_id"`
+	SportID        int64     `schema:"sport_id"`
+	IncludeVirtual bool      `schema:"include_virtual"`
+	StartDate      time.Time `schema:"start_date"`
+	EndDate        time.Time `schema:"end_date"`
+	Distance       *float64  `schema:"distance"`
+	Elevation      *float64  `schema:"elevation"`
+	Duration       *int      `schema:"duration"`
+	Deleted        bool      `schema:"deleted"`
+}
+
+type GoalFormWrapper struct {
+	Goals []GoalForm `schema:"goals"`
 }
 
 type Activity struct {
@@ -147,9 +153,20 @@ type Activity struct {
 
 var tmpl *template.Template
 
+var decoder = schema.NewDecoder()
+
 func init() {
 	_ = godotenv.Load()
 	tmpl = template.Must(template.ParseGlob("templates/*.html"))
+
+	decoder.RegisterConverter(time.Time{}, func(value string) reflect.Value {
+		if v, err := time.Parse("2006-01-02", value); err == nil {
+			return reflect.ValueOf(v)
+		}
+		return reflect.ValueOf(time.Time{})
+
+	})
+
 }
 
 func executeTemplate(w http.ResponseWriter, name string, data interface{}) {
@@ -205,7 +222,7 @@ func initDB() {
 		slog.Error("SQLite connection failed", "fatal", err)
 		os.Exit(1)
 	}
-	
+
 	// TODO: For prod update to max conns
 	db.SetMaxOpenConns(1)
 
@@ -958,20 +975,6 @@ func errorPage(w http.ResponseWriter, r *http.Request) {
 
 func handleSaveGoals(w http.ResponseWriter, r *http.Request) {
 	fmt.Println("Starting save")
-	logAndFail := func(paramName string, err error) {
-		toCheck := paramName
-		if paramName == "" {
-			toCheck = "form"
-		}
-		slog.Error(fmt.Sprintf("Couldn't convert goal param: %s", paramName), "error", err)
-		fmt.Fprintf(w,
-			fmt.Sprintf(`
-				<div>
-					<p>Failed to save! Check %s</p>
-				</div>
-			`, toCheck))
-		http.Error(w, fmt.Sprintf("Failed to save form: .", err), 400)
-	}
 
 	user, ok := r.Context().Value(userContextKey).(StravaAuth)
 	if !ok {
@@ -980,120 +983,40 @@ func handleSaveGoals(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err := r.ParseForm()
-	if err != nil {
+	if err := r.ParseForm(); err != nil {
 		slog.Error("Failed to parse form data", "error", err)
 		http.Error(w, "Error parsing form data", 500)
 	}
 
-	indicies := make(map[int]bool)
-	for key := range r.Form {
-		if strings.HasPrefix(key, "goals[") {
-			start := strings.Index(key, "[") + 1
-			end := strings.Index(key, "]")
-			if start > 0 && end > start {
-				idx, _ := strconv.Atoi(key[start:end])
-				indicies[idx] = true
-			}
-		}
-	}
-
-	if len(indicies) == 0 {
-		slog.Error("No Goal added")
-		http.Error(w, "Error parsing form data", 400)
+	var req GoalFormWrapper
+	if err := decoder.Decode(&req, r.PostForm); err != nil {
+		slog.Error("Decoding error", "error", err)
+		http.Error(w, "Invalid data format", http.StatusBadRequest)
 		return
 	}
 
-	fmt.Println(indicies)
-	
-	for i := range indicies {
-		sportIDStr := r.Form.Get(fmt.Sprintf("goals[%d].sport_id", i))
-		sportID, err := strconv.ParseInt(sportIDStr, 10, 64)
-		if err != nil {
-			logAndFail("sport_id", err)
-			return
-		}
-		goalIDStr := r.Form.Get(fmt.Sprintf("goals[%d].goal_id", i))
-		goalID, _ := strconv.ParseInt(goalIDStr, 10, 64)
+	if len(req.Goals) == 0 {
+		w.WriteHeader(http.StatusBadRequest)
+		fmt.Fprint(w, "<div><p>No goals received</p></div>")
+		return
+	}
 
-		includeVirtualstr := r.Form.Get(fmt.Sprintf("goals[%d].include_virtual", i))
-		includeVirtual := includeVirtualstr == "on"
+	for _, g := range req.Goals {
 
-		startDateStr := r.Form.Get(fmt.Sprintf("goals[%d].start_date", i))
-		startDate := time.Date(time.Now().Year(), 1, 1, 0, 0, 0, 0, time.UTC)
-		if startDateStr != "" {
-			startDate, err = time.Parse("2006-01-02", startDateStr)
-			if err != nil {
-				logAndFail("startDate", err)
-				return
-			}
-		}
-		endDateStr := r.Form.Get(fmt.Sprintf("goals[%d].end_date", i))
-		endDate, err := time.Parse("2006-01-02", endDateStr)
-		if err != nil {
-			logAndFail("endDate", err)
-			return
-		}
+		slog.Info("goal", "info", g)
 
-		if startDate.After(endDate) {
-			fmt.Fprintf(w, `
-				<div>
-					<button hx-post="/" hx-target="#sync-ui" hx-indicator="#loading">Save</button>
-					<p>Failed to save invalid goal dates.</p>
-				</div>
-			`)
-			http.Error(w, "Internal Server Error", 500)
-			return
-		}
-
-		distanceStr := r.Form.Get(fmt.Sprintf("goals[%d].distance", i))
-		distance, err := strconv.ParseFloat(distanceStr, 64)
-		if err != nil {
-			logAndFail("distance", err)
-			return
-		}
-		elevationStr := r.Form.Get(fmt.Sprintf("goals[%d].elevation", i))
-		elevation, err := strconv.ParseFloat(elevationStr, 64)
-		if err != nil {
-			logAndFail("duration", err)
-			return
-		}
-		durationStr := r.Form.Get(fmt.Sprintf("goals[%d].duration", i))
-		duration := 0
-		if durationStr != "" {
-			duration, err = strconv.Atoi(durationStr)
-			if err != nil {
-				logAndFail("duration", err)
-				return
-			}
-		}
-		deletedStr := r.Form.Get(fmt.Sprintf("goals[%d].deleted", i))
-		deleted := deletedStr == "on"
-		if err != nil {
-			logAndFail("deleted", err)
-			return
-		}
-
-		formattedGoal := GoalForm{
-			GoalID:         goalID,
-			SportID:        sportID,
-			IncludeVirtual: includeVirtual,
-			StartDate:      startDate,
-			EndDate:        endDate,
-			Distance:       distance * KmToMeters,
-			Elevation:      elevation,
-			Duration:       duration * HrTosec,
-			Deleted:        deleted,
-		}
-		slog.Info("goal", "info", formattedGoal)
 		if user.Athlete.MeasurementUnit == "feet" {
-			formattedGoal.Distance = formattedGoal.Distance * MilesToMeters
-			formattedGoal.Elevation = formattedGoal.Elevation * FeetToMeters
+			if g.Distance != nil {
+				*g.Distance = *g.Distance * MilesToMeters
+			}
+			if g.Elevation != nil {
+				*g.Elevation = *g.Elevation * FeetToMeters
+			}
 		}
 
 		var query string
 		var args []interface{}
-		if goalID < 0 {
+		if g.GoalID < 0 {
 			query = `
 				INSERT INTO goals (
 					user_strava_id,
@@ -1107,22 +1030,22 @@ func handleSaveGoals(w http.ResponseWriter, r *http.Request) {
 				) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
 			args = []interface{}{
 				user.Athlete.ID,
-				formattedGoal.StartDate,
-				formattedGoal.EndDate,
-				formattedGoal.IncludeVirtual,
-				formattedGoal.SportID,
-				formattedGoal.Elevation,
-				formattedGoal.Distance,
-				formattedGoal.Duration,
+				g.StartDate,
+				g.EndDate,
+				g.IncludeVirtual,
+				g.SportID,
+				g.Elevation,
+				g.Distance,
+				g.Duration,
 			}
 
-		} else if deleted == true {
+		} else if g.Deleted == true {
 			query = `
 				DELETE FROM  goals 
 				WHERE id = ?
 					AND user_strava_id = ?`
 			args = []interface{}{
-				formattedGoal.GoalID,
+				g.GoalID,
 				user.Athlete.ID,
 			}
 		} else {
@@ -1140,25 +1063,25 @@ func handleSaveGoals(w http.ResponseWriter, r *http.Request) {
 					AND user_strava_id = ?`
 
 			args = []interface{}{
-				formattedGoal.StartDate,
-				formattedGoal.EndDate,
-				formattedGoal.IncludeVirtual,
-				formattedGoal.SportID,
-				formattedGoal.Elevation,
-				formattedGoal.Distance,
-				formattedGoal.Duration,
-				formattedGoal.GoalID,
+				g.StartDate,
+				g.EndDate,
+				g.IncludeVirtual,
+				g.SportID,
+				g.Elevation,
+				g.Distance,
+				g.Duration,
+				g.GoalID,
 				user.Athlete.ID,
 			}
 		}
 
+		slog.Info("Attempting save goal")
 		resp, err := db.Exec(query, args...)
-		slog.Info("Attempted save goal", "info", resp)
-		slog.Info("Save goal error", "info", err)
-		
 		if err != nil {
-			logAndFail("", err)
+			slog.Error("Failed to save goal", "error", err)
+			return
 		}
+		slog.Info("Saved goal response", "info", resp)
 
 	}
 	fmt.Fprintf(w, `
