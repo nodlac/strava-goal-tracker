@@ -1002,6 +1002,8 @@ func handleSaveGoals(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	fmt.Println(req.Goals)
+
 	for _, g := range req.Goals {
 
 		slog.Info("goal", "info", g)
@@ -1161,6 +1163,8 @@ func main() {
 
 	// Static files
 	mux.Handle("/styles.css", http.FileServer(http.Dir("templates")))
+	mux.Handle("/htmx.min.js", http.FileServer(http.Dir(".")))
+	mux.Handle("/chart.js", http.FileServer(http.Dir(".")))
 
 	// Protected
 	mux.Handle("/dashboard", requireLogin(http.HandlerFunc(handleUserDashboard)))
