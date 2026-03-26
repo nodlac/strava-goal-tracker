@@ -9,6 +9,7 @@ import (
 	"io"
 	"log"
 	"log/slog"
+	"math"
 	"net/http"
 	"net/url"
 	"os"
@@ -38,8 +39,8 @@ const (
 	MilesToMeters = 1609.34
 	FeetToMeters  = 0.3048
 
-	HrTosec = 3600
-	SecToHr = 1 / 3600
+	HrTosec = 3600.0
+	SecToHr = 0.0002777777777777778
 )
 
 type contextKey string
@@ -276,7 +277,7 @@ func initDB() {
 			sport_id INTEGER,
 			elevation_goal REAL,
 			distance_goal REAL,
-			duration_goal INTEGER,
+			duration_goal REAL,
 			FOREIGN KEY(user_strava_id) REFERENCES users(strava_id)
 			FOREIGN KEY(sport_id) REFERENCES sports(id)
 			UNIQUE(start_date, end_date, user_strava_id, sport_id, include_virtual)
@@ -295,7 +296,7 @@ func initDB() {
 				start_date INTEGER,
 				distance REAL,
 				elevation_gain REAL,
-				duration INTEGER,
+				duration REAL,
 				FOREIGN KEY(user_strava_id) REFERENCES users(strava_id)
 			);`
 	if _, err := db.Exec(acitiviesQuery); err != nil {
@@ -535,6 +536,19 @@ func fetchUserGoals(user StravaAuth) ([]Goal, error) {
 			slog.Error("Failed to unmarshall Goal", "error", err)
 			return nil, err
 		}
+
+		if user.Athlete.MeasurementUnit == "feet" {
+			if g.ElevationGoal.Valid {
+				g.ElevationGoal.Float64 = math.Round(g.ElevationGoal.Float64 * MetersToFeet)
+			}
+			if g.DistanceGoal.Valid {
+				g.DistanceGoal.Float64 = math.Round(g.DistanceGoal.Float64 * MetersToMiles)
+			}
+			if g.DurationGoal.Valid {
+				g.DurationGoal.Float64 = math.Round(g.DurationGoal.Float64 * SecToHr)
+			}
+		}
+
 		goals = append(goals, g)
 	}
 
@@ -1008,39 +1022,47 @@ func handleSaveGoals(w http.ResponseWriter, r *http.Request) {
 
 		slog.Info("goal", "info", g)
 
-		if user.Athlete.MeasurementUnit == "feet" {
-			if g.Distance != nil {
-				*g.Distance = *g.Distance * MilesToMeters
-			}
-			if g.Elevation != nil {
-				*g.Elevation = *g.Elevation * FeetToMeters
-			}
-		}
-
-		elevation := 0.0
-		if g.Elevation != nil {
-			elevation = *g.Elevation
-		}
-
-		distance := 0.0
-		if g.Distance != nil {
-			distance = *g.Distance
-		}
-		duration := 0.0
-		if g.Duration != nil {
-			duration = *g.Duration
-		}
-
-		if distance+elevation+float64(duration) == 0 {
-			w.WriteHeader(http.StatusBadRequest)
-			fmt.Fprint(w, "<div><p>No goals received</p></div>")
-			return
-		}
-
 		var query string
 		var args []interface{}
-		if g.GoalID == 0 {
+		if g.Deleted == true {
 			query = `
+				DELETE FROM  goals 
+				WHERE id = ?
+					AND user_strava_id = ?`
+			args = []interface{}{
+				g.GoalID,
+				user.Athlete.ID,
+			}
+		} else {
+
+			elevation := 0.0
+			if g.Elevation != nil {
+				if user.Athlete.MeasurementUnit == "feet" {
+					*g.Elevation = *g.Elevation * FeetToMeters
+				}
+				elevation = *g.Elevation
+			}
+
+			distance := 0.0
+			if g.Distance != nil {
+				if user.Athlete.MeasurementUnit == "feet" {
+					*g.Distance = *g.Distance * MilesToMeters
+				}
+				distance = *g.Distance
+			}
+			duration := 0.0
+			if g.Duration != nil {
+				duration = *g.Duration * HrTosec
+			}
+
+			if distance+elevation+duration == 0 {
+				w.WriteHeader(http.StatusBadRequest)
+				fmt.Fprint(w, "<div><p>No goals received</p></div>")
+				return
+			}
+
+			if g.GoalID == 0 {
+				query = `
 				INSERT INTO goals (
 					user_strava_id,
 					start_date,
@@ -1051,28 +1073,19 @@ func handleSaveGoals(w http.ResponseWriter, r *http.Request) {
 					distance_goal,
 					duration_goal
 				) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-			args = []interface{}{
-				user.Athlete.ID,
-				g.StartDate,
-				g.EndDate,
-				g.IncludeVirtual,
-				g.SportID,
-				elevation,
-				distance,
-				duration,
-			}
+				args = []interface{}{
+					user.Athlete.ID,
+					g.StartDate,
+					g.EndDate,
+					g.IncludeVirtual,
+					g.SportID,
+					elevation,
+					distance,
+					duration,
+				}
 
-		} else if g.Deleted == true {
-			query = `
-				DELETE FROM  goals 
-				WHERE id = ?
-					AND user_strava_id = ?`
-			args = []interface{}{
-				g.GoalID,
-				user.Athlete.ID,
-			}
-		} else {
-			query = `
+			} else {
+				query = `
 				UPDATE goals 
 				SET 
 					start_date = ?,
@@ -1085,16 +1098,17 @@ func handleSaveGoals(w http.ResponseWriter, r *http.Request) {
 				WHERE id = ?
 					AND user_strava_id = ?`
 
-			args = []interface{}{
-				g.StartDate,
-				g.EndDate,
-				g.IncludeVirtual,
-				g.SportID,
-				elevation,
-				distance,
-				duration,
-				g.GoalID,
-				user.Athlete.ID,
+				args = []interface{}{
+					g.StartDate,
+					g.EndDate,
+					g.IncludeVirtual,
+					g.SportID,
+					elevation,
+					distance,
+					duration,
+					g.GoalID,
+					user.Athlete.ID,
+				}
 			}
 		}
 

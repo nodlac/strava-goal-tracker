@@ -17,7 +17,7 @@
         goal or all three.</p>
     {{.Goals}}
 
-    <form hx-post="/save-goals" hx-target="#sync-ui">
+    <form method="POST" hx-post="/save-goals" hx-target="#sync-ui">
         <table id="goals-table">
             <thead>
                 <tr>
@@ -36,11 +36,11 @@
                 {{range $index, $goal := .Goals}}
                 <tr>
                     <!-- hidden fields -->
-                    <input type="hidden" name="goals[{{$index}}].key" value="{{$index}}">
-                    <input type="hidden" name="goals[{{$index}}].goal_id" value="{{$goal.ID}}">
+                    <input type="hidden" name="goals.{{$index}}.key" value="{{$index}}">
+                    <input type="hidden" name="goals.{{$index}}.goal_id" value="{{$goal.ID}}">
 
                     <td>
-                        <select name="goals[{{$index}}].sport_id" required onchange="toggleElevation(this)">
+                        <select name="goals.{{$index}}.sport_id" required onchange="toggleElevation(this)">
                             <option value=""></option>
                             {{range $.Sports}}
 
@@ -52,29 +52,30 @@
                         </select>
                     </td>
                     <td>
-                        <input type="date" name="goals[{{$index}}].start_date" value="{{$goal.StartDate}}"
+                        <input type="date" name="goals.{{$index}}.start_date" value="{{$goal.StartDate}}"
                             id="start_date_0" required>
                     </td>
                     <td>
-                        <input type="date" name="goals[{{$index}}].end_date" id="end_date_0" value="{{$goal.EndDate}}"
+                        <input type="date" name="goals.{{$index}}.end_date" id="end_date_0" value="{{$goal.EndDate}}"
                             required>
                     </td>
                     <td>
-                        <input type="number" name="goals[{{$index}}].distance" step="1" min="0"
+                        <input type="number" name="goals.{{$index}}.distance" step="1" min="0"
                             value="{{$goal.DistanceGoal.Float64}}" placeholder="{{$distanceUnit}}">
                     </td>
                     <td>
-                        <input type="number" name="goals[{{$index}}].elevation" value="{{$goal.ElevationGoal.Float64}}" step="1"
-                            min="0" placeholder="{{$elevationUnit}}">
+                        <input type="number" name="goals.{{$index}}.elevation" value="{{$goal.ElevationGoal.Float64}}"
+                            step="1" min="0" placeholder="{{$elevationUnit}}">
                     </td>
                     <td>
-                        <input type="number" min="0" name="goals[{{$index}}].duration" placeholder="{{$durationUnit.Float64}}">
+                        <input type="number" min="0" name="goals.{{$index}}.duration"
+                             placeholder="{{$durationUnit}}" value="{{$goal.DurationGoal.Float64}}">
                     </td>
                     <td>
-                        <input type="checkbox" name="goals[{{$index}}].include_virtual" checked>
+                        <input type="checkbox" name="goals.{{$index}}.include_virtual" checked>
                     </td>
                     <td>
-                        <input type="checkbox" name="goals[{{$index}}].deleted">
+                        <input type="checkbox" name="goals.{{$index}}.deleted">
                     </td>
                 </tr>
                 {{end}}
@@ -132,30 +133,30 @@
             const tbody = document.querySelector('#goals-table tbody');
             const tr = document.createElement('tr');
             tr.innerHTML = `
-                    <input type="hidden" value="${rowCount}" name="goals[${rowCount}].key">
+                    <input type="hidden" value="${rowCount}" name="goals.${rowCount}.key">
                 <td>
-                    <select name="goals[${rowCount}].sport_id" required onchange="toggleElevation(this)">
+                    <select name="goals.${rowCount}.sport_id" required onchange="toggleElevation(this)">
                         <option value="">Select Sport</option>
                         ${sportOptions}
                     </select>
                 </td>
                 <td>
-                    <input type="date" name="goals[${rowCount}].start_date" required>
+                    <input type="date" name="goals.${rowCount}.start_date" required>
                 </td>
                 <td>
-                    <input type="date" name="goals[${rowCount}].end_date" required>
+                    <input type="date" name="goals.${rowCount}.end_date" required>
                 </td>
                 <td>
-                    <input type="number" name="goals[${rowCount}].distance" step="1" min="0" placeholder="{{$distanceUnit}}">
+                    <input type="number" name="goals.${rowCount}.distance" step="1" min="0" placeholder="{{$distanceUnit}}">
                 </td>
                 <td>
-                    <input type="number" name="goals[${rowCount}].elevation"  step="1" min="0" placeholder="{{$elevationUnit}}">
+                    <input type="number" name="goals.${rowCount}.elevation"  step="1" min="0" placeholder="{{$elevationUnit}}">
                 </td>
                 <td>
-                    <input type="number" name="goals[${rowCount}].duration"  min="0" placeholder="{{$durationUnit}}" >
+                    <input type="number" name="goals.${rowCount}.duration"  min="0" placeholder="{{$durationUnit}}" >
                 </td>
                 <td>
-                    <input type="checkbox" name="goals[${rowCount}].include_virtual" checked>
+                    <input type="checkbox" name="goals.${rowCount}.include_virtual" checked>
                 </td>
                 <td>
                     <button type="button" class="btn btn-danger" onclick="removeRow(this)">X</button>
@@ -184,15 +185,13 @@
                 const distance = row.querySelector('input[name*=".distance"]');
                 const elevation = row.querySelector('input[name*=".elevation"]');
                 const duration = row.querySelector('input[name*=".duration"]');
-
-                if (!sportSelect || sportSelect.value === '') {
+                const deleted = row.querySelector('input[name*=".deleted"]');
+                if (deleted && deleted.checked) {
                     continue;
                 }
 
-                if (startDate && endDate && startDate.value && endDate.value) {
-                    if (new Date(startDate.value) > new Date(endDate.value)) {
-                        errors.push('Start date must be before end date');
-                    }
+                if (!sportSelect || sportSelect.value === '') {
+                    continue;
                 }
 
                 const hasGoal = (distance && distance.value && parseFloat(distance.value) > 0) ||
@@ -200,7 +199,13 @@
                     (duration && duration.value && parseFloat(duration.value) > 0);
 
                 if (!hasGoal) {
-                    errors.push('Each goal must have at least one target: distance, elevation, or duration');
+                    errors.push('Must set at least one goal (Distance, Elevation or Duration)');
+                }
+
+                if (startDate && endDate && startDate.value && endDate.value) {
+                    if (new Date(startDate.value) > new Date(endDate.value)) {
+                        errors.push('Start date must be before end date');
+                    }
                 }
             }
 

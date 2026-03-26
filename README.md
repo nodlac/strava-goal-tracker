@@ -42,22 +42,29 @@ docker run -d \
 # MVP
 
 ## MVP: Goal Setting
+- [ ] fix goal save error I assume the issue is that I forgot to switch out goal_id when I switched to goal_id
+    - seems to be working?
+- [ ] add form validation to backend (did I add dates?)
+- [ ] push errors back to frontend
+- [ ] only pull in current goals to goal page. Allow deleting of old goals (Need to scope to current goals)
+- [ ] Goal history just put below current goals limit to 10 with pagitation.
 
-- [ ] Need to handle nulls in goals and validate that at least one is set
-- [ ] Goal history page (past/completed goals in read-only table)
-- [ ] activities page
+
+## MVP: Activities
+- [ ] activities page just a list of activities probably 100 per page paginated.
 
 ## MVP: Dashboard
 - [ ] Build dashboard template showing goal progress
 - [ ] Display current totals vs goal targets (simple list, no charts)
+    
+## Mobile 
+- [ ] make everything comply with mobile standards
 
 ---
 
 # Nice to Have (Low Lift)
 
 ## HTML Partials
-- [x] Create templates/header.html with common head, HTMX, Chart.js
-- [x] Create templates/nav.html with common navigation
 - [ ] Update all templates to use partials
 
 ---
@@ -146,3 +153,7 @@ docker run -d \
 - [x] Add goal_id hidden field to template rows -- setup current goals in table (this is what's missing)
 - [x] fix form conversions anything that needs conversion need to pullin from form then convert
 - [x] clean up form save on left add right remove extra save
+- [x] Need to handle nulls in goals and validate that at least one is set
+- [x] need to double check goal conversions from KM toM and back
+- [x] Create templates/header.html with common head, HTMX, Chart.js
+- [x] Create templates/nav.html with common navigation
