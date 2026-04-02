@@ -1020,8 +1020,6 @@ func handleSaveGoals(w http.ResponseWriter, r *http.Request) {
 
 	for _, g := range req.Goals {
 
-		slog.Info("goal", "info", g)
-
 		var query string
 		var args []interface{}
 		if g.Deleted == true {
@@ -1034,6 +1032,22 @@ func handleSaveGoals(w http.ResponseWriter, r *http.Request) {
 				user.Athlete.ID,
 			}
 		} else {
+
+			if g.SportID == 0 {
+				slog.Error("Sport id not set")
+				w.WriteHeader(http.StatusBadRequest)
+				fmt.Fprint(w, "<div><p>No goals received</p></div>")
+				return
+			}
+
+			if g.StartDate.IsZero() || g.EndDate.IsZero() ||
+				time.Now().Compare(g.EndDate) == 1 ||
+				g.StartDate.Compare(g.EndDate) == 1 {
+				slog.Error("User submitted bad dates")
+				w.WriteHeader(http.StatusBadRequest)
+				fmt.Fprint(w, "<div><p>No goals received</p></div>")
+				return
+			}
 
 			elevation := 0.0
 			if g.Elevation != nil {
@@ -1056,12 +1070,13 @@ func handleSaveGoals(w http.ResponseWriter, r *http.Request) {
 			}
 
 			if distance+elevation+duration == 0 {
+				slog.Error("User submitted empty goal")
 				w.WriteHeader(http.StatusBadRequest)
 				fmt.Fprint(w, "<div><p>No goals received</p></div>")
 				return
 			}
 
-			if g.GoalID == 0 {
+			if g.GoalID <= 0 {
 				query = `
 				INSERT INTO goals (
 					user_strava_id,

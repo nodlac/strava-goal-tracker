@@ -31,6 +31,11 @@ A Go web application that integrates with Strava API to track athletic goals (di
 - Implement SQLite features (user wants to learn this themselves)
 - Implement Valkey/Reids features (user wants to learn this themselves)
 
+## Agent Behavior
+
+- **Do NOT ask to switch into "build mode"** - the user prefers conversational assistance
+- **Reread relevant code before responding** - the user frequently makes updates, so check if issues are already resolved before flagging them
+
 ## Common Tasks
 
 ### Running the Project

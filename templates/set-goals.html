@@ -15,7 +15,6 @@
     <p>Select the activity type, set your start and end date and set your goal. You can set a distance, elevation or
         duration
         goal or all three.</p>
-    {{.Goals}}
 
     <form method="POST" hx-post="/save-goals" hx-target="#sync-ui">
         <table id="goals-table">
@@ -52,12 +51,12 @@
                         </select>
                     </td>
                     <td>
-                        <input type="date" name="goals.{{$index}}.start_date" value="{{$goal.StartDate}}"
-                            id="start_date_0" required>
+                        <input type="date" name="goals.{{$index}}.start_date" value="{{$goal.StartDate.Format `2006-01-02`}}"
+                            id="start_date_{{$index}}" >
                     </td>
                     <td>
-                        <input type="date" name="goals.{{$index}}.end_date" id="end_date_0" value="{{$goal.EndDate}}"
-                            required>
+                        <input type="date" name="goals.{{$index}}.end_date" id="end_date_{{$index}}" value="{{$goal.EndDate.Format `2006-01-02`}}"
+                            >
                     </td>
                     <td>
                         <input type="number" name="goals.{{$index}}.distance" step="1" min="0"
@@ -106,7 +105,7 @@
         function getDefaultDates() {
             const today = new Date();
             const year = today.getFullYear();
-            const startDate = today.toISOString().split('T')[0];
+            const startDate = `${year}-01-01`;
             const endDate = `${year}-12-31`;
             return {startDate, endDate};
         }
@@ -186,12 +185,25 @@
                 const elevation = row.querySelector('input[name*=".elevation"]');
                 const duration = row.querySelector('input[name*=".duration"]');
                 const deleted = row.querySelector('input[name*=".deleted"]');
+
                 if (deleted && deleted.checked) {
                     continue;
                 }
 
                 if (!sportSelect || sportSelect.value === '') {
-                    continue;
+                    errors.push('Please Set Sport Type');
+                }
+
+                if (startDate && endDate && startDate.value && endDate.value) {
+                    if (new Date(startDate.value) > new Date(endDate.value)) {
+                        errors.push('Start date must be before end date');
+                    }
+                }
+
+                if (startDate && endDate && startDate.value && endDate.value) {
+                    if (new Date(startDate.value) > new Date(endDate.value)) {
+                        errors.push('Start date must be before end date');
+                    }
                 }
 
                 const hasGoal = (distance && distance.value && parseFloat(distance.value) > 0) ||
@@ -202,11 +214,7 @@
                     errors.push('Must set at least one goal (Distance, Elevation or Duration)');
                 }
 
-                if (startDate && endDate && startDate.value && endDate.value) {
-                    if (new Date(startDate.value) > new Date(endDate.value)) {
-                        errors.push('Start date must be before end date');
-                    }
-                }
+
             }
 
             if (rows.length > 0 && !document.querySelector('select[name*="sport_id"]')?.value) {

@@ -44,7 +44,6 @@ docker run -d \
 ## MVP: Goal Setting
 - [ ] fix goal save error I assume the issue is that I forgot to switch out goal_id when I switched to goal_id
     - seems to be working?
-- [ ] add form validation to backend (did I add dates?)
 - [ ] push errors back to frontend
 - [ ] only pull in current goals to goal page. Allow deleting of old goals (Need to scope to current goals)
 - [ ] Goal history just put below current goals limit to 10 with pagitation.
@@ -157,3 +156,4 @@ docker run -d \
 - [x] need to double check goal conversions from KM toM and back
 - [x] Create templates/header.html with common head, HTMX, Chart.js
 - [x] Create templates/nav.html with common navigation
+- [x] add form validation to backend (did I add dates?)
