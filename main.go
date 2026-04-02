@@ -177,9 +177,9 @@ func executeTemplate(w http.ResponseWriter, name string, data interface{}) {
 	if err != nil {
 		slog.Error("Template error", "template", name, "error", err)
 		if os.Getenv("DEV") == "true" {
-			http.Error(w, "Template error: "+err.Error(), 500)
+			http.Error(w, "Template error: "+err.Error(), http.StatusInternalServerError)
 		} else {
-			http.Error(w, "Internal Server Error", 500)
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		}
 	}
 }
@@ -468,6 +468,43 @@ func fetchSports() ([]Sport, error) {
 				has_elevation,
 				image_URL
 			FROM sports`)
+	if err != nil {
+		slog.Error("Failed to Fetch Sports", "error", err)
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var s Sport
+		err := rows.Scan(
+			&s.ID,
+			&s.Name,
+			&s.StraveSportId,
+			&s.HasElevation,
+			&s.ImageUrl,
+		)
+
+		if err != nil {
+			slog.Error("Failed to unmarshall Sport", "error", err)
+			return nil, err
+		}
+		sports = append(sports, s)
+	}
+
+	return sports, nil
+}
+
+func fetchNonElevationSports() ([]Sport, error) {
+	var sports []Sport
+	rows, err := db.Query(
+		`SELECT 
+				id,
+				name,
+				strava_sport_id,
+				has_elevation,
+				image_URL
+			FROM sports
+			WHERE has_elevation = false`)
 	if err != nil {
 		slog.Error("Failed to Fetch Sports", "error", err)
 		return nil, err
@@ -912,7 +949,7 @@ func handleSetGoals(w http.ResponseWriter, r *http.Request) {
 	user, ok := r.Context().Value(userContextKey).(StravaAuth)
 	if !ok {
 		slog.Error("Context fetch failed")
-		http.Error(w, "Internal Server Error", 500)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return
 	}
 
@@ -939,7 +976,7 @@ func handleUserDashboard(w http.ResponseWriter, r *http.Request) {
 	user, ok := r.Context().Value(userContextKey).(StravaAuth)
 	if !ok {
 		slog.Error("Context fetch failed")
-		http.Error(w, "Internal Server Error", 500)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return
 	}
 
@@ -994,13 +1031,21 @@ func handleSaveGoals(w http.ResponseWriter, r *http.Request) {
 	user, ok := r.Context().Value(userContextKey).(StravaAuth)
 	if !ok {
 		slog.Error("Context fetch failed")
-		http.Error(w, "Internal Server Error", 500)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return
 	}
 
 	if err := r.ParseForm(); err != nil {
 		slog.Error("Failed to parse form data", "error", err)
-		http.Error(w, "Error parsing form data", 500)
+		http.Error(w, "Error parsing form data", http.StatusInternalServerError)
+		return
+	}
+
+	sports, err := fetchSports()
+	if err != nil {
+		slog.Error("Failed to fetch sports", "error", err)
+		http.Error(w, "Error processing request", http.StatusInternalServerError)
+		return
 	}
 
 	var req GoalFormWrapper
@@ -1038,6 +1083,17 @@ func handleSaveGoals(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(http.StatusBadRequest)
 				fmt.Fprint(w, "<div><p>No goals received</p></div>")
 				return
+			}
+
+			for _, s := range sports {
+				if s.ID != g.SportID {
+					continue
+				}
+				if g.Elevation != nil && *g.Elevation > float64(0) {
+					slog.Error("User tried to submit non-elevation goal with elevation", "error", err)
+					http.Error(w, fmt.Sprintf("%s must have elevation of 0", g.SportID), http.StatusBadRequest)
+					return
+				}
 			}
 
 			if g.StartDate.IsZero() || g.EndDate.IsZero() ||
@@ -1149,7 +1205,7 @@ func handleSyncActivities(w http.ResponseWriter, r *http.Request) {
 	user, ok := r.Context().Value(userContextKey).(StravaAuth)
 	if !ok {
 		slog.Error("Context fetch failed")
-		http.Error(w, "Internal Server Error", 500)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return
 	}
 
