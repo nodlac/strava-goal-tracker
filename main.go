@@ -103,6 +103,7 @@ type Sport struct {
 type Goal struct {
 	ID             int64           `json:"id"`
 	SportId        int64           `json:"sport_id"`
+	HasElevation   bool            `json:"has_elevation"`
 	StartDate      time.Time       `json:"start_date"`
 	EndDate        time.Time       `json:"end_date"`
 	IncludeVirtual bool            `json:"include_virtual"`
@@ -534,19 +535,20 @@ func fetchUserGoals(user StravaAuth) ([]Goal, error) {
 	var goals []Goal
 	rows, err := db.Query(
 		`SELECT 
-				id,
-				start_date,
-				end_date,
-				include_virtual,
-				user_strava_id,
-				sport_id,
-				elevation_goal,
-				distance_goal,
-				duration_goal
-			FROM goals 
-			WHERE user_strava_id = ?
-				-- AND end_date > datetime('now')
-			ORDER BY end_date DESC;`,
+				g.id,
+				g.start_date,
+				g.end_date,
+				g.include_virtual,
+				g.user_strava_id,
+				g.sport_id,
+				s.has_elevation,
+				g.elevation_goal,
+				g.distance_goal,
+				g.duration_goal
+			FROM goals g
+			JOIN sports s ON g.sport_id = s.id
+			WHERE g.user_strava_id = ?
+			ORDER BY g.end_date DESC;`,
 		user.Athlete.ID)
 	if err != nil {
 		slog.Error("Failed to Fetch Goals", "error", err)
@@ -563,6 +565,7 @@ func fetchUserGoals(user StravaAuth) ([]Goal, error) {
 			&g.IncludeVirtual,
 			&g.UserStravaId,
 			&g.SportId,
+			&g.HasElevation,
 			&g.ElevationGoal,
 			&g.DistanceGoal,
 			&g.DurationGoal,
