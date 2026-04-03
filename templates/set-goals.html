@@ -16,7 +16,10 @@
         duration
         goal or all three.</p>
 
-    <form method="POST" hx-post="/save-goals" hx-target="#sync-ui">
+    <p class="measurement-notice">We detected that you use {{.MeasurementUnit}} to measure your workouts. You can change
+        this in the profile settings.</p>
+
+    <form method="POST" hx-post="/save-goals" hx-target="#form-message">
         <table id="goals-table">
             <thead>
                 <tr>
@@ -63,8 +66,10 @@
                             value="{{$goal.DistanceGoal.Float64}}" placeholder="{{$distanceUnit}}">
                     </td>
                     <td>
-                        <input type="number" name="goals.{{$index}}.elevation" value="{{$goal.ElevationGoal.Float64}}"
-                            step="1" min="0" placeholder="{{$elevationUnit}}">
+                        <input type="number" name="goals.{{$index}}.elevation" 
+                            value="{{if $goal.HasElevation}}{{$goal.ElevationGoal.Float64}}{{else}}0{{end}}"
+                            step="1" min="0" placeholder="{{$elevationUnit}}"
+                            {{if not $goal.HasElevation}}disabled{{end}}>
                     </td>
                     <td>
                         <input type="number" min="0" name="goals.{{$index}}.duration"
@@ -88,14 +93,9 @@
         </div>
     </form>
 
-    <div id="form-error" class="error-message" style="display: none; color: red; margin: 10px 0;"></div>
-
-    <div id="sync-ui">
-        <span id="loading" class="htmx-indicator">Syncing...</span>
+    <div id="form-message" style="text-align: center; margin: 10px 0;">
+        <div id="form-error" class="error-message" style="display: none; color: red;"></div>
     </div>
-
-    <p class="measurement-notice">We detected that you use {{.MeasurementUnit}} to measure your workouts. You can change
-        this in the profile settings.</p>
 
     <script>
         let rowCount = {{len .Goals}};
@@ -227,6 +227,8 @@
         const form = document.querySelector('form[hx-post="/save-goals"]');
         if (form) {
             form.addEventListener('htmx:beforeRequest', function (e) {
+                const messageDiv = document.getElementById('form-message');
+                messageDiv.innerHTML = ""
                 const errorDiv = document.getElementById('form-error');
                 const errors = validateGoals();
                 if (errors.length > 0) {

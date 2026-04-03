@@ -280,7 +280,6 @@ func initDB() {
 			duration_goal REAL,
 			FOREIGN KEY(user_strava_id) REFERENCES users(strava_id)
 			FOREIGN KEY(sport_id) REFERENCES sports(id)
-			UNIQUE(start_date, end_date, user_strava_id, sport_id, include_virtual)
 			);`
 	if _, err := db.Exec(goalsQuery); err != nil {
 		slog.Error("Failed to create goals table", "fatal", err)
@@ -1025,43 +1024,52 @@ func errorPage(w http.ResponseWriter, r *http.Request) {
 
 // --- HTMX Handlers ---
 
+func htmxError(w http.ResponseWriter, r *http.Request, msg string, code int) {
+	slog.Error("HTMX error response", "error", msg)
+	if r.Header.Get("HX-Request") == "true" {
+		slog.Info("htmx")
+		w.Header().Set("Content-Type", "text/html")
+		fmt.Fprintf(w, "<div id='form-error' style='display: block; color: red;'>%s</div>", msg)
+	} else {
+		http.Error(w, msg, code)
+	}
+}
 func handleSaveGoals(w http.ResponseWriter, r *http.Request) {
-	fmt.Println("Starting save")
+	// I feel like there might be a better place for this.
+	w.Header().Set("Content-Type", "text/html")
 
 	user, ok := r.Context().Value(userContextKey).(StravaAuth)
 	if !ok {
 		slog.Error("Context fetch failed")
-		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		htmxError(w, r, "Internal Server Error", http.StatusInternalServerError)
 		return
 	}
 
 	if err := r.ParseForm(); err != nil {
 		slog.Error("Failed to parse form data", "error", err)
-		http.Error(w, "Error parsing form data", http.StatusInternalServerError)
+		htmxError(w, r, "Error parsing form data", http.StatusInternalServerError)
 		return
 	}
 
-	sports, err := fetchSports()
+	sports, err := fetchNonElevationSports()
 	if err != nil {
 		slog.Error("Failed to fetch sports", "error", err)
-		http.Error(w, "Error processing request", http.StatusInternalServerError)
+		htmxError(w, r, "Error processing request", http.StatusInternalServerError)
 		return
 	}
 
 	var req GoalFormWrapper
 	if err := decoder.Decode(&req, r.PostForm); err != nil {
 		slog.Error("Decoding error", "error", err)
-		http.Error(w, "Invalid data format", http.StatusBadRequest)
+		htmxError(w, r, "Invalid data format", http.StatusInternalServerError)
 		return
 	}
 
 	if len(req.Goals) == 0 {
 		w.WriteHeader(http.StatusBadRequest)
-		fmt.Fprint(w, "<div><p>No goals received</p></div>")
+		htmxError(w, r, "No goals received", http.StatusInternalServerError)
 		return
 	}
-
-	fmt.Println(req.Goals)
 
 	for _, g := range req.Goals {
 
@@ -1081,6 +1089,7 @@ func handleSaveGoals(w http.ResponseWriter, r *http.Request) {
 			if g.SportID == 0 {
 				slog.Error("Sport id not set")
 				w.WriteHeader(http.StatusBadRequest)
+
 				fmt.Fprint(w, "<div><p>No goals received</p></div>")
 				return
 			}
@@ -1090,8 +1099,7 @@ func handleSaveGoals(w http.ResponseWriter, r *http.Request) {
 					continue
 				}
 				if g.Elevation != nil && *g.Elevation > float64(0) {
-					slog.Error("User tried to submit non-elevation goal with elevation", "error", err)
-					http.Error(w, fmt.Sprintf("%s must have elevation of 0", g.SportID), http.StatusBadRequest)
+					htmxError(w, r, "Invalid goals. Non-elevation goal with elevation.", http.StatusBadRequest)
 					return
 				}
 			}
@@ -1187,17 +1195,13 @@ func handleSaveGoals(w http.ResponseWriter, r *http.Request) {
 		resp, err := db.Exec(query, args...)
 		if err != nil {
 			slog.Error("Failed to save goal", "error", err)
+			htmxError(w, r, "No goals received", http.StatusInternalServerError)
 			return
 		}
 		slog.Info("Saved goal response", "info", resp)
 
 	}
-	fmt.Fprintf(w, `
-		<div>
-			<button hx-post="/" hx-target="#sync-ui" hx-indicator="#loading">Save</button>
-			<p>Saved Successfully!</p>
-		</div>
-	`)
+	fmt.Fprintf(w, "<div id='form-message'>Saved!</div>")
 }
 
 func handleSyncActivities(w http.ResponseWriter, r *http.Request) {
