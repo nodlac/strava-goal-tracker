@@ -103,6 +103,7 @@ type Sport struct {
 type Goal struct {
 	ID             int64           `json:"id"`
 	SportId        int64           `json:"sport_id"`
+	SportName      string          `json:"sport_name"`
 	HasElevation   bool            `json:"has_elevation"`
 	StartDate      time.Time       `json:"start_date"`
 	EndDate        time.Time       `json:"end_date"`
@@ -161,6 +162,11 @@ var decoder = schema.NewDecoder()
 func init() {
 	_ = godotenv.Load()
 	tmpl = template.Must(template.ParseGlob("templates/*.html"))
+	tmpl.Funcs(template.FuncMap{
+		"add": func(a, b int) int {
+			return a + b
+		},
+	})
 
 	decoder.RegisterConverter(time.Time{}, func(value string) reflect.Value {
 		if v, err := time.Parse("2006-01-02", value); err == nil {
@@ -583,6 +589,7 @@ func fetchUserGoals(user StravaAuth) (current, past []Goal, err error) {
 				g.include_virtual,
 				g.user_strava_id,
 				g.sport_id,
+				s.name,
 				s.has_elevation,
 				g.elevation_goal,
 				g.distance_goal,
@@ -609,6 +616,7 @@ func fetchUserGoals(user StravaAuth) (current, past []Goal, err error) {
 				&g.IncludeVirtual,
 				&g.UserStravaId,
 				&g.SportId,
+				&g.SportName,
 				&g.HasElevation,
 				&g.ElevationGoal,
 				&g.DistanceGoal,

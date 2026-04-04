@@ -1,95 +1,86 @@
-{{template "header.html" }}
-{{template "nav.html" .}}
-<main>
-    <h1>Set Goals</h1>
+{{template "header.html"}}
 
-    {{$isImperial := eq .MeasurementUnit "feet"}}
+{{template "nav.html" .}}
+
+<main>
     {{$distanceUnit := "km"}}
     {{$elevationUnit := "m"}}
     {{$durationUnit := "hrs"}}
-    {{if $isImperial}}
-    {{$distanceUnit = "miles"}}
-    {{$elevationUnit = "ft"}}
+    {{if eq .MeasurementUnit "feet"}}
+        {{$distanceUnit = "mi"}}
+        {{$elevationUnit = "ft"}}
     {{end}}
+    
+    <h1>Set Goals</h1>
+    <p>Select the activity type, set your start and end date and set your goal. You can set a distance, elevation or duration goal or all three.</p>
 
-    <p>Select the activity type, set your start and end date and set your goal. You can set a distance, elevation or
-        duration
-        goal or all three.</p>
-
-    <p class="measurement-notice">We detected that you use {{.MeasurementUnit}} to measure your workouts. You can change
-        this in the profile settings.</p>
+    <p class="measurement-notice">We detected that you use {{.MeasurementUnit}} to measure your workouts. You can change this in the profile settings.</p>
 
     <form method="POST" hx-post="/save-goals" hx-target="#form-message">
-        <table id="goals-table">
-            <thead>
-                <tr>
-                    <th>Sport</th>
-                    <th>Start Date</th>
-                    <th>End Date</th>
-                    <th>Distance ({{$distanceUnit}})</th>
-                    <th>Elevation ({{$elevationUnit}})</th>
-                    <th>Duration ({{$durationUnit}})</th>
-                    <th>Include Virtual</th>
-                    <th>Delete</th>
-                </tr>
-            </thead>
-            <tbody>
-                {{if len .CurrentGoals }}
-                {{range $index, $goal := .CurrentGoals}}
-                <tr>
-                    <!-- hidden fields -->
-                    <input type="hidden" name="goals.{{$index}}.key" value="{{$index}}">
-                    <input type="hidden" name="goals.{{$index}}.goal_id" value="{{$goal.ID}}">
-
-                    <td>
-                        <select name="goals.{{$index}}.sport_id" required onchange="toggleElevation(this)">
-                            <option value=""></option>
-                            {{range $.Sports}}
-
-                            <option value="{{.ID}}" data-has-elevation="{{.HasElevation}}" {{if eq .ID
-                                $goal.SportId}}selected{{end}}>
-                                {{.Name}}
-                            </option>
-                            {{end}}
-                        </select>
-                    </td>
-                    <td>
-                        <input type="date" name="goals.{{$index}}.start_date" value="{{$goal.StartDate.Format `2006-01-02`}}"
-                            id="start_date_{{$index}}" >
-                    </td>
-                    <td>
-                        <input type="date" name="goals.{{$index}}.end_date" id="end_date_{{$index}}" value="{{$goal.EndDate.Format `2006-01-02`}}"
-                            >
-                    </td>
-                    <td>
-                        <input type="number" name="goals.{{$index}}.distance" step="1" min="0"
-                            value="{{$goal.DistanceGoal.Float64}}" placeholder="{{$distanceUnit}}">
-                    </td>
-                    <td>
-                        <input type="number" name="goals.{{$index}}.elevation" 
-                            value="{{if $goal.HasElevation}}{{$goal.ElevationGoal.Float64}}{{else}}0{{end}}"
-                            step="1" min="0" placeholder="{{$elevationUnit}}"
-                            {{if not $goal.HasElevation}}disabled{{end}}>
-                    </td>
-                    <td>
-                        <input type="number" min="0" name="goals.{{$index}}.duration"
-                             placeholder="{{$durationUnit}}" value="{{$goal.DurationGoal.Float64}}">
-                    </td>
-                    <td>
-                        <input type="checkbox" name="goals.{{$index}}.include_virtual" checked>
-                    </td>
-                    <td>
-                        <input type="checkbox" name="goals.{{$index}}.deleted">
-                    </td>
-                </tr>
-                {{end}}
-                {{end}}
-            </tbody>
-        </table>
+        <div id="goals-container">
+            {{if len .CurrentGoals }}
+            {{range $index, $goal := .CurrentGoals}}
+            <div class="goal-card">
+                <input type="hidden" name="goals.{{$index}}.key" value="{{$index}}">
+                <input type="hidden" name="goals.{{$index}}.goal_id" value="{{$goal.ID}}">
+                
+                <div class="goal-card-body">
+                    <div class="goal-row-header">
+                        <div class="goal-field">
+                            <label>Sport</label>
+                            <select name="goals.{{$index}}.sport_id" required onchange="toggleElevation(this)">
+                                <option value=""></option>
+                                {{range $.Sports}}
+                                <option value="{{.ID}}" data-has-elevation="{{.HasElevation}}" {{if eq .ID $goal.SportId}}selected{{end}}>
+                                    {{.Name}}
+                                </option>
+                                {{end}}
+                            </select>
+                        </div>
+                        <div class="goal-field">
+                            <label>Start Date</label>
+                            <input type="date" name="goals.{{$index}}.start_date" value="{{$goal.StartDate.Format `2006-01-02`}}" required>
+                        </div>
+                        <div class="goal-field">
+                            <label>End Date</label>
+                            <input type="date" name="goals.{{$index}}.end_date" value="{{$goal.EndDate.Format `2006-01-02`}}" required>
+                        </div>
+                    </div>
+                    
+                    <div class="goal-row goal-numbers">
+                        <div class="goal-field">
+                            <label>Distance ({{$distanceUnit}})</label>
+                            <input type="number" name="goals.{{$index}}.distance" step="1" min="0" value="{{$goal.DistanceGoal.Float64}}" placeholder="{{$distanceUnit}}">
+                        </div>
+                        <div class="goal-field">
+                            <label>Elevation ({{$elevationUnit}})</label>
+                            <input type="number" name="goals.{{$index}}.elevation" step="1" min="0" value="{{if $goal.HasElevation}}{{$goal.ElevationGoal.Float64}}{{else}}0{{end}}" placeholder="{{$elevationUnit}}" {{if not $goal.HasElevation}}disabled{{end}}>
+                        </div>
+                        <div class="goal-field">
+                            <label>Duration ({{$durationUnit}})</label>
+                            <input type="number" name="goals.{{$index}}.duration" step="1" min="0" value="{{$goal.DurationGoal.Float64}}" placeholder="{{$durationUnit}}">
+                        </div>
+                        <div class="goal-field">
+                            <label>Includes Virtual</label>
+                            <button type="button" class="virtual-toggle {{if $goal.IncludeVirtual}}active{{end}}" onclick="toggleVirtual(this)">
+                                <span class="virtual-label">No</span>
+                            </button>
+                            <input type="hidden" name="goals.{{$index}}.include_virtual" value="{{if $goal.IncludeVirtual}}true{{else}}false{{end}}">
+                        </div>
+                    </div>
+                    
+                    <div class="goal-row goal-actions-row">
+                        <button type="button" class="btn btn-sm btn-outline-danger" onclick="removeGoalCard(this)">Delete</button>
+                    </div>
+                </div>
+            </div>
+            {{end}}
+            {{end}}
+        </div>
 
         <div class="form-actions">
             <button type="submit" class="btn btn-primary">Save Goals</button>
-            <button type="button" class="btn btn-secondary" onclick="addRow()">Add Goal</button>
+            <button type="button" class="btn btn-secondary" onclick="addGoalCard()">Add Goal</button>
         </div>
     </form>
 
@@ -100,38 +91,43 @@
     <h2>Past Goals</h2>
 
     {{if len .PastGoals }}
-    <table id="past-goals-table">
-        <thead>
-            <tr>
-                <th>Sport</th>
-                <th>Start Date</th>
-                <th>End Date</th>
-                <th>Distance</th>
-                <th>Elevation</th>
-                <th>Duration</th>
-                <th>Include Virtual</th>
-                <th>Actions</th>
-            </tr>
-        </thead>
-        <tbody>
-            {{range $index, $goal := .PastGoals}}
-            <tr>
-                <td>{{$goal.SportId}}</td>
-                <td>{{$goal.StartDate.Format "2006-01-02"}}</td>
-                <td>{{$goal.EndDate.Format "2006-01-02"}}</td>
-                <td>{{$goal.DistanceGoal.Float64}}</td>
-                <td>{{$goal.ElevationGoal.Float64}}</td>
-                <td>{{$goal.DurationGoal.Float64}}</td>
-                <td>{{if $goal.IncludeVirtual}}Yes{{else}}No{{end}}</td>
-                <td>
-                    <button type="button" class="btn btn-secondary" 
+    <div id="past-goals-container">
+        {{range $index, $goal := .PastGoals}}
+        <div class="goal-card past-goal">
+            <div class="goal-card-header past-goals-header">
+                <div class="past-goal-info">
+                    <span class="past-goal-sport">{{$goal.SportName}}</span>
+                    <span class="past-goal-dates">{{$goal.StartDate.Format "01-02-2006"}} through {{$goal.EndDate.Format "01-02-2006"}}</span>
+                </div>
+                <div class="goal-actions">
+                    <button type="button" class="btn btn-secondary btn-sm" 
                         onclick="copyGoal('{{$goal.SportId}}', '{{$goal.StartDate.Format "2006-01-02"}}', '{{$goal.EndDate.Format "2006-01-02"}}', '{{$goal.DistanceGoal.Float64}}', '{{$goal.ElevationGoal.Float64}}', '{{$goal.DurationGoal.Float64}}', {{$goal.IncludeVirtual}})">Copy</button>
-                    <button type="button" class="btn btn-danger" onclick="deleteGoal({{$goal.ID}})">Delete</button>
-                </td>
-            </tr>
-            {{end}}
-        </tbody>
-    </table>
+                    <button type="button" class="btn btn-outline-danger btn-sm" onclick="deleteGoal({{$goal.ID}})">Delete</button>
+                </div>
+            </div>
+            <div class="goal-card-body">
+                <div class="goal-row goal-numbers">
+                    <div class="goal-stat">
+                        <span class="goal-stat-label">Distance</span>
+                        <span class="goal-stat-value">{{$goal.DistanceGoal.Float64}}</span>
+                    </div>
+                    <div class="goal-stat">
+                        <span class="goal-stat-label">Elevation</span>
+                        <span class="goal-stat-value">{{$goal.ElevationGoal.Float64}}</span>
+                    </div>
+                    <div class="goal-stat">
+                        <span class="goal-stat-label">Duration</span>
+                        <span class="goal-stat-value">{{$goal.DurationGoal.Float64}}</span>
+                    </div>
+                    <div class="goal-stat">
+                        <span class="goal-stat-label">Includes Virtual</span>
+                        <span class="goal-stat-value">{{if $goal.IncludeVirtual}}Yes{{else}}No{{end}}</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {{end}}
+    </div>
     {{else}}
     <p>No past goals.</p>
     {{end}}
@@ -151,15 +147,15 @@
             return {startDate, endDate};
         }
 
-        function setDefaultDates(row) {
+        function setDefaultDates(card) {
             const {startDate, endDate} = getDefaultDates();
-            row.querySelector('[name$=".start_date"]').value = startDate;
-            row.querySelector('[name$=".end_date"]').value = endDate;
+            card.querySelector('[name$=".start_date"]').value = startDate;
+            card.querySelector('[name$=".end_date"]').value = endDate;
         }
 
         function toggleElevation(selectEl) {
-            const row = selectEl.closest('tr');
-            const elevationInput = row.querySelector('[name$=".elevation"]');
+            const card = selectEl.closest('.goal-card');
+            const elevationInput = card.querySelector('[name$=".elevation"]');
             const selectedOption = selectEl.options[selectEl.selectedIndex];
             const hasElevation = selectedOption.dataset.hasElevation === "true";
 
@@ -169,41 +165,85 @@
             elevationInput.disabled = !hasElevation;
         }
 
-        function addRow() {
-            const tbody = document.querySelector('#goals-table tbody');
-            const tr = document.createElement('tr');
-            tr.innerHTML = `
-                    <input type="hidden" value="${rowCount}" name="goals.${rowCount}.key">
-                <td>
-                    <select name="goals.${rowCount}.sport_id" required onchange="toggleElevation(this)">
-                        <option value="">Select Sport</option>
-                        ${sportOptions}
-                    </select>
-                </td>
-                <td>
-                    <input type="date" name="goals.${rowCount}.start_date" required>
-                </td>
-                <td>
-                    <input type="date" name="goals.${rowCount}.end_date" required>
-                </td>
-                <td>
-                    <input type="number" name="goals.${rowCount}.distance" step="1" min="0" placeholder="{{$distanceUnit}}">
-                </td>
-                <td>
-                    <input type="number" name="goals.${rowCount}.elevation"  step="1" min="0" placeholder="{{$elevationUnit}}">
-                </td>
-                <td>
-                    <input type="number" name="goals.${rowCount}.duration"  min="0" placeholder="{{$durationUnit}}" >
-                </td>
-                <td>
-                    <input type="checkbox" name="goals.${rowCount}.include_virtual" checked>
-                </td>
-                <td>
-                    <button type="button" class="btn btn-danger" onclick="removeRow(this)">X</button>
-                </td>
+        function toggleVirtual(btn) {
+            const card = btn.closest('.goal-card');
+            const hiddenInput = card.querySelector('[name$=".include_virtual"]');
+            const label = btn.querySelector('.virtual-label');
+            const isActive = btn.classList.contains('active');
+            
+            if (isActive) {
+                btn.classList.remove('active');
+                label.textContent = 'No';
+                hiddenInput.value = 'false';
+            } else {
+                btn.classList.add('active');
+                label.textContent = 'Yes';
+                hiddenInput.value = 'true';
+            }
+        }
+
+        function removeGoalCard(btn) {
+            const card = btn.closest('.goal-card');
+            card.remove();
+        }
+
+        function addGoalCard() {
+            const container = document.getElementById('goals-container');
+            const card = document.createElement('div');
+            card.className = 'goal-card';
+            card.innerHTML = `
+                <input type="hidden" name="goals.${rowCount}.key" value="${rowCount}">
+                <input type="hidden" name="goals.${rowCount}.goal_id" value="0">
+                
+                <div class="goal-card-body">
+                    <div class="goal-field">
+                        <label>Sport</label>
+                        <select name="goals.${rowCount}.sport_id" required onchange="toggleElevation(this)">
+                            <option value="">Select Sport</option>
+                            ${sportOptions}
+                        </select>
+                    </div>
+                    
+                    <div class="goal-row">
+                        <div class="goal-field">
+                            <label>Start Date</label>
+                            <input type="date" name="goals.${rowCount}.start_date" required>
+                        </div>
+                        <div class="goal-field">
+                            <label>End Date</label>
+                            <input type="date" name="goals.${rowCount}.end_date" required>
+                        </div>
+                    </div>
+                    
+                    <div class="goal-row goal-numbers">
+                        <div class="goal-field">
+                            <label>Distance ({{$distanceUnit}})</label>
+                            <input type="number" name="goals.${rowCount}.distance" step="1" min="0" placeholder="{{$distanceUnit}}">
+                        </div>
+                        <div class="goal-field">
+                            <label>Elevation ({{$elevationUnit}})</label>
+                            <input type="number" name="goals.${rowCount}.elevation" step="1" min="0" placeholder="{{$elevationUnit}}">
+                        </div>
+                        <div class="goal-field">
+                            <label>Duration ({{$durationUnit}})</label>
+                            <input type="number" name="goals.${rowCount}.duration" step="1" min="0" placeholder="{{$durationUnit}}">
+                        </div>
+                        <div class="goal-field">
+                            <label>Includes Virtual</label>
+                            <button type="button" class="virtual-toggle active" onclick="toggleVirtual(this)">
+                                <span class="virtual-label">Yes</span>
+                            </button>
+                            <input type="hidden" name="goals.${rowCount}.include_virtual" value="true">
+                        </div>
+                    </div>
+                    
+                    <div class="goal-row goal-actions-row">
+                        <button type="button" class="btn btn-sm btn-outline-danger" onclick="removeGoalCard(this)">Delete</button>
+                    </div>
+                </div>
             `;
-            tbody.appendChild(tr);
-            setDefaultDates(tr);
+            container.appendChild(card);
+            setDefaultDates(card);
             rowCount++;
         }
 
@@ -218,119 +258,80 @@
         }
 
         function copyGoal(sportId, startDate, endDate, distance, elevation, duration, includeVirtual) {
-            const tbody = document.querySelector('#goals-table tbody');
-            const tr = document.createElement('tr');
-            tr.innerHTML = `
-                    <input type="hidden" value="${rowCount}" name="goals.${rowCount}.key">
-                <td>
-                    <select name="goals.${rowCount}.sport_id" required onchange="toggleElevation(this)">
-                        <option value="">Select Sport</option>
-                        ${sportOptions}
-                    </select>
-                </td>
-                <td>
-                    <input type="date" name="goals.${rowCount}.start_date" required>
-                </td>
-                <td>
-                    <input type="date" name="goals.${rowCount}.end_date" required>
-                </td>
-                <td>
-                    <input type="number" name="goals.${rowCount}.distance" step="1" min="0" placeholder="{{$distanceUnit}}">
-                </td>
-                <td>
-                    <input type="number" name="goals.${rowCount}.elevation" step="1" min="0" placeholder="{{$elevationUnit}}">
-                </td>
-                <td>
-                    <input type="number" name="goals.${rowCount}.duration" min="0" placeholder="{{$durationUnit}}">
-                </td>
-                <td>
-                    <input type="checkbox" name="goals.${rowCount}.include_virtual" checked>
-                </td>
-                <td>
-                    <button type="button" class="btn btn-danger" onclick="removeRow(this)">X</button>
-                </td>
-            `;
-            tbody.appendChild(tr);
+            addGoalCard();
+            
+            // Get the newly added card
+            const cards = document.querySelectorAll('#goals-container .goal-card');
+            const card = cards[cards.length - 1];
             
             // Set the sport dropdown
-            const select = tr.querySelector('select[name$=".sport_id"]');
+            const select = card.querySelector('select[name$=".sport_id"]');
             select.value = sportId;
             toggleElevation(select);
             
             // Set all goal values
-            tr.querySelector('[name$=".start_date"]').value = startDate;
-            tr.querySelector('[name$=".end_date"]').value = endDate;
-            tr.querySelector('[name$=".distance"]').value = distance;
-            tr.querySelector('[name$=".elevation"]').value = elevation;
-            tr.querySelector('[name$=".duration"]').value = duration;
-            tr.querySelector('[name$=".include_virtual"]').checked = includeVirtual;
+            card.querySelector('[name$=".start_date"]').value = startDate;
+            card.querySelector('[name$=".end_date"]').value = endDate;
+            card.querySelector('[name$=".distance"]').value = distance;
+            card.querySelector('[name$=".elevation"]').value = elevation;
+            card.querySelector('[name$=".duration"]').value = duration;
+            card.querySelector('[name$=".include_virtual"]').checked = includeVirtual;
             
-            rowCount++;
+            // Scroll to the new card
+            card.scrollIntoView({ behavior: 'smooth', block: 'center' });
         }
 
         document.addEventListener('DOMContentLoaded', function () {
-            const firstRow = document.querySelector('#goals-table tbody tr');
-            if (firstRow) {
-                setDefaultDates(firstRow);
+            const firstCard = document.querySelector('#goals-container .goal-card');
+            if (firstCard) {
+                setDefaultDates(firstCard);
             }
         });
 
         function validateGoals() {
-            const rows = document.querySelectorAll('#goals-table tbody tr');
             const errors = [];
-
-            for (const row of rows) {
-                const sportSelect = row.querySelector('select[name*="sport_id"]');
-                const startDate = row.querySelector('input[name*=".start_date"]');
-                const endDate = row.querySelector('input[name*=".end_date"]');
-                const distance = row.querySelector('input[name*=".distance"]');
-                const elevation = row.querySelector('input[name*=".elevation"]');
-                const duration = row.querySelector('input[name*=".duration"]');
-                const deleted = row.querySelector('input[name*=".deleted"]');
-
-                if (deleted && deleted.checked) {
-                    continue;
-                }
-
-                if (!sportSelect || sportSelect.value === '') {
-                    errors.push('Please Set Sport Type');
-                }
-
-                if (startDate && endDate && startDate.value && endDate.value) {
-                    if (new Date(startDate.value) > new Date(endDate.value)) {
-                        errors.push('Start date must be before end date');
-                    }
-                }
-
-                if (startDate && endDate && startDate.value && endDate.value) {
-                    if (new Date(startDate.value) > new Date(endDate.value)) {
-                        errors.push('Start date must be before end date');
-                    }
-                }
-
-                const hasGoal = (distance && distance.value && parseFloat(distance.value) > 0) ||
-                    (elevation && elevation.value && parseFloat(elevation.value) > 0) ||
-                    (duration && duration.value && parseFloat(duration.value) > 0);
-
-                if (!hasGoal) {
-                    errors.push('Must set at least one goal (Distance, Elevation or Duration)');
-                }
-
-
+            const cards = document.querySelectorAll('#goals-container .goal-card');
+            
+            if (cards.length === 0) {
+                errors.push('Please add at least one goal');
+                return errors;
             }
-
-            if (rows.length > 0 && !document.querySelector('select[name*="sport_id"]')?.value) {
-                errors.push('Please select a sport for at least one goal');
-            }
-
+            
+            cards.forEach((card, index) => {
+                const sport = card.querySelector('[name$=".sport_id"]');
+                const startDate = card.querySelector('[name$=".start_date"]');
+                const endDate = card.querySelector('[name$=".end_date"]');
+                const distance = card.querySelector('[name$=".distance"]');
+                const elevation = card.querySelector('[name$=".elevation"]');
+                const duration = card.querySelector('[name$=".duration"]');
+                
+                const goalNum = index + 1;
+                
+                if (!sport.value) {
+                    errors.push(`Goal ${goalNum}: Please select a sport`);
+                }
+                
+                if (!startDate.value || !endDate.value) {
+                    errors.push(`Goal ${goalNum}: Please select start and end dates`);
+                }
+                
+                if (startDate.value && endDate.value && startDate.value > endDate.value) {
+                    errors.push(`Goal ${goalNum}: End date must be after start date`);
+                }
+                
+                const hasValues = (distance.value > 0) || (elevation.value > 0) || (duration.value > 0);
+                if (!hasValues) {
+                    errors.push(`Goal ${goalNum}: Please set at least one goal value (distance, elevation, or duration)`);
+                }
+            });
+            
             return errors;
         }
 
+        // Handle form submission
         const form = document.querySelector('form[hx-post="/save-goals"]');
         if (form) {
             form.addEventListener('htmx:beforeRequest', function (e) {
-                const messageDiv = document.getElementById('form-message');
-                messageDiv.innerHTML = ""
                 const errorDiv = document.getElementById('form-error');
                 const errors = validateGoals();
                 if (errors.length > 0) {
@@ -342,15 +343,5 @@
                 errorDiv.style.display = 'none';
             });
         }
-
-        function removeRow(btn) {
-            const row = btn.closest('tr');
-            const tbody = row.parentElement;
-            if (tbody.children.length > 1) {
-                row.remove();
-            }
-        }
     </script>
 </main>
-{{template "footer.html"}}
-
