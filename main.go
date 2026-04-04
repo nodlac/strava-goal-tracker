@@ -531,10 +531,13 @@ func fetchNonElevationSports() ([]Sport, error) {
 	return sports, nil
 }
 
-func fetchUserGoals(user StravaAuth) ([]Goal, error) {
-	var goals []Goal
-	rows, err := db.Query(
-		`SELECT 
+func fetchUserGoals(user StravaAuth) (current, past []Goal, err error) {
+	pastClause := "end_date <= datetime('now')"
+	currentClause := "end_date > datetime('now')"
+
+	fetchGoals := func(clause string) (goals []Goal, error error) {
+		query :=
+			`SELECT 
 				g.id,
 				g.start_date,
 				g.end_date,
@@ -547,51 +550,64 @@ func fetchUserGoals(user StravaAuth) ([]Goal, error) {
 				g.duration_goal
 			FROM goals g
 			JOIN sports s ON g.sport_id = s.id
-			WHERE g.user_strava_id = ?
-			ORDER BY g.end_date DESC;`,
-		user.Athlete.ID)
-	if err != nil {
-		slog.Error("Failed to Fetch Goals", "error", err)
-		return nil, err
-	}
-	defer rows.Close()
+			WHERE g.user_strava_id = ? and ` + clause +
+				`ORDER BY g.end_date DESC;`
 
-	for rows.Next() {
-		var g Goal
-		err := rows.Scan(
-			&g.ID,
-			&g.StartDate,
-			&g.EndDate,
-			&g.IncludeVirtual,
-			&g.UserStravaId,
-			&g.SportId,
-			&g.HasElevation,
-			&g.ElevationGoal,
-			&g.DistanceGoal,
-			&g.DurationGoal,
-		)
-
+		rows, err := db.Query(
+			query,
+			user.Athlete.ID)
 		if err != nil {
-			slog.Error("Failed to unmarshall Goal", "error", err)
 			return nil, err
 		}
+		defer rows.Close()
 
-		if user.Athlete.MeasurementUnit == "feet" {
-			if g.ElevationGoal.Valid {
-				g.ElevationGoal.Float64 = math.Round(g.ElevationGoal.Float64 * MetersToFeet)
+		for rows.Next() {
+			var g Goal
+			err := rows.Scan(
+				&g.ID,
+				&g.StartDate,
+				&g.EndDate,
+				&g.IncludeVirtual,
+				&g.UserStravaId,
+				&g.SportId,
+				&g.HasElevation,
+				&g.ElevationGoal,
+				&g.DistanceGoal,
+				&g.DurationGoal,
+			)
+
+			if err != nil {
+				return nil, err
 			}
-			if g.DistanceGoal.Valid {
-				g.DistanceGoal.Float64 = math.Round(g.DistanceGoal.Float64 * MetersToMiles)
+
+			if user.Athlete.MeasurementUnit == "feet" {
+				if g.ElevationGoal.Valid {
+					g.ElevationGoal.Float64 = math.Round(g.ElevationGoal.Float64 * MetersToFeet)
+				}
+				if g.DistanceGoal.Valid {
+					g.DistanceGoal.Float64 = math.Round(g.DistanceGoal.Float64 * MetersToMiles)
+				}
+				if g.DurationGoal.Valid {
+					g.DurationGoal.Float64 = math.Round(g.DurationGoal.Float64 * SecToHr)
+				}
 			}
-			if g.DurationGoal.Valid {
-				g.DurationGoal.Float64 = math.Round(g.DurationGoal.Float64 * SecToHr)
-			}
+
+			goals = append(goals, g)
 		}
-
-		goals = append(goals, g)
+		return goals, nil
 	}
 
-	return goals, nil
+	current, err = fetchGoals(currentClause)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	past, err = fetchGoals(pastClause)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return current, past, nil
 }
 
 // --- Middleware ---
@@ -955,7 +971,7 @@ func handleSetGoals(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	goals, err := fetchUserGoals(user)
+	current, past, err := fetchUserGoals(user)
 	if err != nil {
 		slog.Error("Error getting goals", "error", err)
 	}
@@ -968,7 +984,8 @@ func handleSetGoals(w http.ResponseWriter, r *http.Request) {
 	executeTemplate(w, "set-goals.html", map[string]interface{}{
 		"ProfileImg":      user.Athlete.ProfileImg,
 		"MeasurementUnit": user.Athlete.MeasurementUnit,
-		"Goals":           goals,
+		"CurrentGoals":    current,
+		"PastGoals":       past,
 		"Sports":          sports,
 	})
 }
@@ -1037,6 +1054,7 @@ func htmxError(w http.ResponseWriter, r *http.Request, msg string, code int) {
 		http.Error(w, msg, code)
 	}
 }
+
 func handleSaveGoals(w http.ResponseWriter, r *http.Request) {
 	// I feel like there might be a better place for this.
 	w.Header().Set("Content-Type", "text/html")
@@ -1207,6 +1225,39 @@ func handleSaveGoals(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "<div id='form-message'>Saved!</div>")
 }
 
+func handleDeleteGoal(w http.ResponseWriter, r *http.Request) {
+	user, ok := r.Context().Value(userContextKey).(StravaAuth)
+	if !ok {
+		slog.Error("Context fetch failed")
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+
+	if err := r.ParseForm(); err != nil {
+		slog.Error("Failed to parse form data", "error", err)
+		htmxError(w, r, "Failed to parse request", http.StatusBadRequest)
+		return
+	}
+
+	goalID := r.FormValue("goal_id")
+	if goalID == "" {
+		htmxError(w, r, "Missing goal_id", http.StatusBadRequest)
+		return
+	}
+
+	_, err := db.Exec("DELETE FROM goals WHERE id = ? AND user_strava_id = ?", goalID, user.Athlete.ID)
+	if err != nil {
+		slog.Error("Failed to delete goal", "error", err)
+		htmxError(w, r, "Failed to delete goal", http.StatusInternalServerError)
+		return
+	}
+
+	fmt.Fprintf(w, "<div id='form-message'>Deleted!</div>")
+}
+
+func handleActivites(w http.ResponseWriter, r *http.Response) {
+
+}
 func handleSyncActivities(w http.ResponseWriter, r *http.Request) {
 
 	user, ok := r.Context().Value(userContextKey).(StravaAuth)
@@ -1261,7 +1312,9 @@ func main() {
 	// Protected
 	mux.Handle("/dashboard", requireLogin(http.HandlerFunc(handleUserDashboard)))
 	mux.Handle("/goals", requireLogin(http.HandlerFunc(handleSetGoals)))
+	mux.Handle("/activities", requireLogin(http.HandlerFunc(handleActivites)))
 	mux.Handle("/save-goals", requireLogin(http.HandlerFunc(handleSaveGoals)))
+	mux.Handle("/delete-goal", requireLogin(http.HandlerFunc(handleDeleteGoal)))
 	mux.Handle("/sync", requireLogin(http.HandlerFunc(handleSyncActivities)))
 
 	slog.Info("Server starting on :8080 use :8090 proxy")

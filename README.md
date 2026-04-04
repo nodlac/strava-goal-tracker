@@ -38,13 +38,12 @@ docker run -d \
 - [ ] low bar with privacy and terms of use
 - [ ] build out landing page.
 - [ ] could cache the user's goals / dashboard queries I'd do that once we see if compute is heavy could even cache it for 30 min or something 
+- [ ] I think it would be neat to have a section where users could see total goal completions.
 
 # MVP
 
 ## MVP: Goal Setting
-- [ ] fix goal save error I assume the issue is that I forgot to switch out goal_id when I switched to goal_id
-    - seems to be working?
-- [ ] push errors back to frontend
+- [ ] add current, past all param to fetch goals. then build our past goals section. 
 - [ ] only pull in current goals to goal page. Allow deleting of old goals (Need to scope to current goals)
 - [ ] Goal history just put below current goals limit to 10 with pagitation.
 
@@ -157,3 +156,6 @@ docker run -d \
 - [x] Create templates/header.html with common head, HTMX, Chart.js
 - [x] Create templates/nav.html with common navigation
 - [x] add form validation to backend (did I add dates?)
+- [x] fix goal save error I assume the issue is that I forgot to switch out goal_id when I switched to goal_id
+    - seems to be working?
+- [x] push errors back to frontend

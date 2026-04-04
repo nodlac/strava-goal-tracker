@@ -34,8 +34,8 @@
                 </tr>
             </thead>
             <tbody>
-                {{if len .Goals }}
-                {{range $index, $goal := .Goals}}
+                {{if len .CurrentGoals }}
+                {{range $index, $goal := .CurrentGoals}}
                 <tr>
                     <!-- hidden fields -->
                     <input type="hidden" name="goals.{{$index}}.key" value="{{$index}}">
@@ -93,12 +93,50 @@
         </div>
     </form>
 
-    <div id="form-message" style="text-align: center; margin: 10px 0;">
+    <div id="form-message" class="form-message" style="text-align: center; margin: 10px 0;">
         <div id="form-error" class="error-message" style="display: none; color: red;"></div>
     </div>
 
+    <h2>Past Goals</h2>
+
+    {{if len .PastGoals }}
+    <table id="past-goals-table">
+        <thead>
+            <tr>
+                <th>Sport</th>
+                <th>Start Date</th>
+                <th>End Date</th>
+                <th>Distance</th>
+                <th>Elevation</th>
+                <th>Duration</th>
+                <th>Include Virtual</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {{range $index, $goal := .PastGoals}}
+            <tr>
+                <td>{{$goal.SportId}}</td>
+                <td>{{$goal.StartDate.Format "2006-01-02"}}</td>
+                <td>{{$goal.EndDate.Format "2006-01-02"}}</td>
+                <td>{{$goal.DistanceGoal.Float64}}</td>
+                <td>{{$goal.ElevationGoal.Float64}}</td>
+                <td>{{$goal.DurationGoal.Float64}}</td>
+                <td>{{if $goal.IncludeVirtual}}Yes{{else}}No{{end}}</td>
+                <td>
+                    <button type="button" class="btn btn-secondary" onclick="copyGoal({{$goal}})">Copy</button>
+                    <button type="button" class="btn btn-danger" onclick="deleteGoal({{$goal.ID}})">Delete</button>
+                </td>
+            </tr>
+            {{end}}
+        </tbody>
+    </table>
+    {{else}}
+    <p>No past goals.</p>
+    {{end}}
+
     <script>
-        let rowCount = {{len .Goals}};
+        let rowCount = {{len .CurrentGoals}};
 
         const sportOptions = `{{range .Sports}}<option value="{{.ID}}" data-has-elevation="{{.HasElevation}}">{{.Name}}</option>{{end}}`;
 
@@ -163,6 +201,57 @@
             `;
             tbody.appendChild(tr);
             setDefaultDates(tr);
+            rowCount++;
+        }
+
+        function deleteGoal(goalId) {
+            if (confirm('Are you sure you want to delete this goal?')) {
+                htmx.ajax('POST', '/delete-goal', {
+                    values: { goal_id: goalId }
+                }).then(() => {
+                    window.location.reload();
+                });
+            }
+        }
+
+        function copyGoal(goal) {
+            const tbody = document.querySelector('#goals-table tbody');
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                    <input type="hidden" value="${rowCount}" name="goals.${rowCount}.key">
+                <td>
+                    <select name="goals.${rowCount}.sport_id" required onchange="toggleElevation(this)">
+                        <option value="">Select Sport</option>
+                        ${sportOptions}
+                    </select>
+                </td>
+                <td>
+                    <input type="date" name="goals.${rowCount}.start_date" required>
+                </td>
+                <td>
+                    <input type="date" name="goals.${rowCount}.end_date" required>
+                </td>
+                <td>
+                    <input type="number" name="goals.${rowCount}.distance" step="1" min="0" placeholder="{{$distanceUnit}}">
+                </td>
+                <td>
+                    <input type="number" name="goals.${rowCount}.elevation" step="1" min="0" placeholder="{{$elevationUnit}}">
+                </td>
+                <td>
+                    <input type="number" name="goals.${rowCount}.duration" min="0" placeholder="{{$durationUnit}}">
+                </td>
+                <td>
+                    <input type="checkbox" name="goals.${rowCount}.include_virtual" checked>
+                </td>
+                <td>
+                    <button type="button" class="btn btn-danger" onclick="removeRow(this)">X</button>
+                </td>
+            `;
+            tbody.appendChild(tr);
+            // Set the sport dropdown
+            const select = tr.querySelector('select[name$=".sport_id"]');
+            select.value = goal.sport_id;
+            toggleElevation(select);
             rowCount++;
         }
 

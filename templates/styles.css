@@ -168,6 +168,7 @@ label {
     justify-content: space-between;
 }
 
+
 /*-bottom: 20 Goal Card */
 .goal-card {
     border: 1px solid var(--border-color);
@@ -388,4 +389,8 @@ a:hover {
 .badge.info {
     background: var(--accent-blue);
     color: #003366;
+}
+
+#form-message {
+    height: 2em;
 }
