@@ -531,6 +531,45 @@ func fetchNonElevationSports() ([]Sport, error) {
 	return sports, nil
 }
 
+func fetchUserActivites(user StravaAuth, limit int, offset int) ([]Activity, error) {
+	var activites []Activity
+	query := `
+		SELECT 
+			*
+		FROM user_activites
+		WHERE user_id = ?	
+		ORDER BY end_date desc
+		LIMIT ?
+		OFFSET ?
+	`
+	rows, err := db.Query(
+		query,
+		user.Athlete.ID, limit, offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var a Activity
+		err := rows.Scan(
+			&a.ID,
+			&a.Name,
+			&a.Distance,
+			&a.Elevation,
+			&a.Minutes,
+			&a.Type,
+			&a.StartDate,
+			&a.Timezone,
+		)
+
+		if err != nil {
+			return nil, err
+		}
+	}
+	return activites, nil
+}
+
 func fetchUserGoals(user StravaAuth) (current, past []Goal, err error) {
 	pastClause := "end_date <= datetime('now')"
 	currentClause := "end_date > datetime('now')"
@@ -1032,6 +1071,28 @@ func handleUserDashboard(w http.ResponseWriter, r *http.Request) {
 	// fmt.Fprintf(w, "<html><body><h1>Activities</h1><pre>%s</pre></body></html>", string(prettyJSON))
 }
 
+func handleActivites(w http.ResponseWriter, r *http.Request) {
+	// need to figure out pagination.
+	user, ok := r.Context().Value(userContextKey).(StravaAuth)
+	if !ok {
+		slog.Error("Context fetch failed")
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+	limit := 100
+	offset := 0
+
+	activites, err := fetchUserActivites(user, limit, offset)
+	if err != nil {
+		slog.Error("Failed to fetch activites", "error", err)
+	}
+
+	executeTemplate(w, "activities .html", map[string]interface{}{
+		"Activities": activites,
+	})
+
+}
+
 func goLogout(w http.ResponseWriter, r *http.Request) {
 	sessionManager.Destroy(r.Context())
 	http.Redirect(w, r, "/", http.StatusFound)
@@ -1040,6 +1101,14 @@ func goLogout(w http.ResponseWriter, r *http.Request) {
 func errorPage(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html")
 	fmt.Fprintf(w, "<h1>Uh Oh</h1><p>An error has occurred.</p><a href='/'>Home</a>")
+}
+
+func termsPage(w http.ResponseWriter, r *http.Request) {
+	executeTemplate(w, "terms.html", nil)
+}
+
+func privacyPage(w http.ResponseWriter, r *http.Request) {
+	executeTemplate(w, "privacy.html", nil)
 }
 
 // --- HTMX Handlers ---
@@ -1255,9 +1324,6 @@ func handleDeleteGoal(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "<div id='form-message'>Deleted!</div>")
 }
 
-func handleActivites(w http.ResponseWriter, r *http.Response) {
-
-}
 func handleSyncActivities(w http.ResponseWriter, r *http.Request) {
 
 	user, ok := r.Context().Value(userContextKey).(StravaAuth)
@@ -1303,6 +1369,8 @@ func main() {
 	mux.HandleFunc("/logout", goLogout)
 	mux.HandleFunc("/exchange_token", exchangeToken)
 	mux.HandleFunc("/error", errorPage)
+	mux.Handle("/terms", requireLogin(http.HandlerFunc(termsPage)))
+	mux.Handle("/privacy", requireLogin(http.HandlerFunc(privacyPage)))
 
 	// Static files
 	mux.Handle("/styles.css", http.FileServer(http.Dir("templates")))

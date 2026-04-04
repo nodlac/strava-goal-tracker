@@ -124,7 +124,8 @@
                 <td>{{$goal.DurationGoal.Float64}}</td>
                 <td>{{if $goal.IncludeVirtual}}Yes{{else}}No{{end}}</td>
                 <td>
-                    <button type="button" class="btn btn-secondary" onclick="copyGoal({{$goal}})">Copy</button>
+                    <button type="button" class="btn btn-secondary" 
+                        onclick="copyGoal('{{$goal.SportId}}', '{{$goal.StartDate.Format "2006-01-02"}}', '{{$goal.EndDate.Format "2006-01-02"}}', '{{$goal.DistanceGoal.Float64}}', '{{$goal.ElevationGoal.Float64}}', '{{$goal.DurationGoal.Float64}}', {{$goal.IncludeVirtual}})">Copy</button>
                     <button type="button" class="btn btn-danger" onclick="deleteGoal({{$goal.ID}})">Delete</button>
                 </td>
             </tr>
@@ -134,6 +135,8 @@
     {{else}}
     <p>No past goals.</p>
     {{end}}
+
+    {{template "footer.html"}}
 
     <script>
         let rowCount = {{len .CurrentGoals}};
@@ -214,7 +217,7 @@
             }
         }
 
-        function copyGoal(goal) {
+        function copyGoal(sportId, startDate, endDate, distance, elevation, duration, includeVirtual) {
             const tbody = document.querySelector('#goals-table tbody');
             const tr = document.createElement('tr');
             tr.innerHTML = `
@@ -248,10 +251,20 @@
                 </td>
             `;
             tbody.appendChild(tr);
+            
             // Set the sport dropdown
             const select = tr.querySelector('select[name$=".sport_id"]');
-            select.value = goal.sport_id;
+            select.value = sportId;
             toggleElevation(select);
+            
+            // Set all goal values
+            tr.querySelector('[name$=".start_date"]').value = startDate;
+            tr.querySelector('[name$=".end_date"]').value = endDate;
+            tr.querySelector('[name$=".distance"]').value = distance;
+            tr.querySelector('[name$=".elevation"]').value = elevation;
+            tr.querySelector('[name$=".duration"]').value = duration;
+            tr.querySelector('[name$=".include_virtual"]').checked = includeVirtual;
+            
             rowCount++;
         }
 
@@ -339,6 +352,5 @@
         }
     </script>
 </main>
-</body>
+{{template "footer.html"}}
 
-</html>

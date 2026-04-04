@@ -42,10 +42,6 @@ docker run -d \
 
 # MVP
 
-## MVP: Goal Setting
-- [ ] add current, past all param to fetch goals. then build our past goals section. 
-- [ ] only pull in current goals to goal page. Allow deleting of old goals (Need to scope to current goals)
-- [ ] Goal history just put below current goals limit to 10 with pagitation.
 
 
 ## MVP: Activities
@@ -57,13 +53,6 @@ docker run -d \
     
 ## Mobile 
 - [ ] make everything comply with mobile standards
-
----
-
-# Nice to Have (Low Lift)
-
-## HTML Partials
-- [ ] Update all templates to use partials
 
 ---
 
@@ -159,3 +148,7 @@ docker run -d \
 - [x] fix goal save error I assume the issue is that I forgot to switch out goal_id when I switched to goal_id
     - seems to be working?
 - [x] push errors back to frontend
+- [x] Update all templates to use partials
+- [x] add current, past, all param to fetch goals. then build our past goals section. 
+- [x] only pull in current goals to goal page. Allow deleting of old goals (Need to scope to current goals)
+- [x] Goal history just put below current goals limit to 10 with pagitation.
