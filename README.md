@@ -35,17 +35,55 @@ docker run -d \
 ---
 
 # Distractions 
-- [ ] low bar with privacy and terms of use
-- [ ] build out landing page.
+- [/] low bar with privacy and terms of use
+- [/] build out landin a page.
 - [ ] could cache the user's goals / dashboard queries I'd do that once we see if compute is heavy could even cache it for 30 min or something 
 - [ ] I think it would be neat to have a section where users could see total goal completions.
 
-# MVP
-
-
-
 ## MVP: Activities
-- [ ] activities page just a list of activities probably 100 per page paginated.
+
+### Step 1: Add pagination parameters to handleActivites
+- [ ] Parse `page` and `limit` query parameters from URL
+- [ ] Calculate offset: `offset = (page - 1) * limit`
+- [ ] Default to page 1, limit 20-50 per page
+
+### Step 2: Get total activity count (optional for page numbers)
+- [ ] Add count query to fetchUserActivities or new function
+- [ ] Return total count to template for calculating total pages
+
+### Step 3: Update activities.html template
+- [ ] Create card-based layout for activities (similar to goals cards)
+- [ ] Display: activity name, sport type, date, distance, elevation, duration
+- [ ] Use consistent styling with Tokyo Night theme
+
+### Step 4: Add pagination controls
+- [ ] Previous/Next buttons or page numbers
+- [ ] Use HTMX for smooth pagination: `hx-get="/activities?page=X" hx-target="#activities-container"`
+- [ ] Or traditional links with query params
+
+### Step 5: Add activities partial endpoint (if using HTMX)
+- [ ] Create endpoint that returns just the activities list HTML
+- [ ] Existing handleActivites can remain for initial page load
+
+### Activity fields to display:
+- [ ] Activity name/title
+- [ ] Sport type (from sports table)
+- [ ] Start date/time
+- [ ] Distance (with unit)
+- [ ] Elevation gain (with unit)
+- [ ] Duration (formatted nicely)
+- [ ] Activity type (Ride, Run, Swim, etc.)
+
+### Example implementation:
+```go
+// handleActivites updates
+page := r.URL.Query().Get("page")
+limit := 50  // or from query param
+offset := (page - 1) * limit
+activities, _ := fetchUserActivites(user, limit, offset)
+```
+
+- [x] activities page just a list of activities probably 100 per page paginated.
 
 ## MVP: Dashboard
 - [ ] Build dashboard template showing goal progress

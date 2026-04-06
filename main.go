@@ -937,8 +937,7 @@ func syncActivities(user StravaAuth) ([]Activity, error) {
 // --- Handlers ---
 
 func landing(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "text/html")
-	fmt.Fprintf(w, "<a href='/login'>Login with Strava</a>")
+	executeTemplate(w, "landing.html", nil)
 }
 
 func goLogin(w http.ResponseWriter, r *http.Request) {
@@ -1087,7 +1086,7 @@ func handleActivites(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return
 	}
-	limit := 100
+	limit := 20
 	offset := 0
 
 	activites, err := fetchUserActivites(user, limit, offset)
@@ -1095,7 +1094,7 @@ func handleActivites(w http.ResponseWriter, r *http.Request) {
 		slog.Error("Failed to fetch activites", "error", err)
 	}
 
-	executeTemplate(w, "activities .html", map[string]interface{}{
+	executeTemplate(w, "activities.html", map[string]interface{}{
 		"Activities": activites,
 	})
 
@@ -1120,6 +1119,10 @@ func privacyPage(w http.ResponseWriter, r *http.Request) {
 }
 
 // --- HTMX Handlers ---
+
+func htmxActivityPage(w http.ResponseWriter, r *http.Request) {
+	// extract limit and offset
+}
 
 func htmxError(w http.ResponseWriter, r *http.Request, msg string, code int) {
 	slog.Error("HTMX error response", "error", msg)
