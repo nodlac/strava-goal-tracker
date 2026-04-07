@@ -143,14 +143,17 @@ type GoalFormWrapper struct {
 }
 
 type Activity struct {
-	ID        int64     `json:"id"`
-	Name      string    `json:"name"`
-	Distance  float64   `json:"distance"`
-	Elevation float64   `json:"total_elevation_gain"`
-	Minutes   int       `json:"moving_time"`
-	Type      string    `json:"type"`
-	StartDate time.Time `json:"start_date"`
-	Timezone  string    `json:"timezone"`
+	ID               int64     `json:"id"`
+	Name             string    `json:"name"`
+	StravaActivityID int64     `json:"strava_activity_id"`
+	UserStravaId     int64     `json:"user_strava_id"`
+	ActivityType     string    `json:"activity_type"`
+	StartDate        time.Time `json:"start_date"`
+	Distance         float64   `json:"distance"`
+	Elevation        float64   `json:"total_elevation_gain"`
+	Duration         int       `json:"moving_time"`
+	Type             string    `json:"type"`
+	Timezone         string    `json:"timezone"`
 }
 
 // Templates
@@ -362,7 +365,7 @@ func updateOrCreateUser(auth StravaAuth) (bool, error) {
 
 	if !exists {
 		if _, err := syncActivities(auth); err != nil {
-			slog.Error("Failed to sync user activites on account create", "error", err)
+			slog.Error("Failed to sync user activities on account create", "error", err)
 			return !exists, err
 		}
 	}
@@ -537,14 +540,14 @@ func fetchNonElevationSports() ([]Sport, error) {
 	return sports, nil
 }
 
-func fetchUserActivites(user StravaAuth, limit int, offset int) ([]Activity, error) {
-	var activites []Activity
+func fetchUseractivities(user StravaAuth, limit int, offset int) ([]Activity, error) {
+	var activities []Activity
 	query := `
 		SELECT 
 			*
-		FROM user_activites
-		WHERE user_id = ?	
-		ORDER BY end_date desc
+		FROM user_activities
+		WHERE user_strava_id = ?	
+		ORDER BY start_date desc
 		LIMIT ?
 		OFFSET ?
 	`
@@ -573,7 +576,7 @@ func fetchUserActivites(user StravaAuth, limit int, offset int) ([]Activity, err
 			return nil, err
 		}
 	}
-	return activites, nil
+	return activities, nil
 }
 
 func fetchUserGoals(user StravaAuth) (current, past []Goal, err error) {
@@ -1063,9 +1066,9 @@ func handleUserDashboard(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// // test activiteis endpoint and token refresh
-	// activities, err := getActivites(user)
+	// activities, err := getactivities(user)
 	// if err != nil {
-	// 	slog.Error("Error fetching activites", "error", err)
+	// 	slog.Error("Error fetching activities", "error", err)
 	// }
 	// // 2. Turn the slice into "Pretty" JSON bytes
 	// prettyJSON, err := json.MarshalIndent(activities, "", "    ")
@@ -1078,7 +1081,7 @@ func handleUserDashboard(w http.ResponseWriter, r *http.Request) {
 	// fmt.Fprintf(w, "<html><body><h1>Activities</h1><pre>%s</pre></body></html>", string(prettyJSON))
 }
 
-func handleActivites(w http.ResponseWriter, r *http.Request) {
+func handleactivities(w http.ResponseWriter, r *http.Request) {
 	// need to figure out pagination.
 	user, ok := r.Context().Value(userContextKey).(StravaAuth)
 	if !ok {
@@ -1089,13 +1092,15 @@ func handleActivites(w http.ResponseWriter, r *http.Request) {
 	limit := 20
 	offset := 0
 
-	activites, err := fetchUserActivites(user, limit, offset)
+	activities, err := fetchUseractivities(user, limit, offset)
 	if err != nil {
-		slog.Error("Failed to fetch activites", "error", err)
+		slog.Error("Failed to fetch activities", "error", err)
 	}
 
 	executeTemplate(w, "activities.html", map[string]interface{}{
-		"Activities": activites,
+		// "Username":         user.Athlete.Username,
+		// "ProfileImg":       user.Athlete.ProfileImg,
+		"Activities": activities,
 	})
 
 }
@@ -1344,7 +1349,7 @@ func handleSyncActivities(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	activites, err := syncActivities(user)
+	activities, err := syncActivities(user)
 	if err != nil {
 		fmt.Fprintf(w, `
     <div>
@@ -1358,9 +1363,9 @@ func handleSyncActivities(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, `
     <div>
         <button hx-post="/sync" hx-target="#sync-ui" hx-indicator="#loading">Sync Again</button>
-        <p>Success! Syned %d activites at: <b>%s</b></p>
+        <p>Success! Syned %d activities at: <b>%s</b></p>
     </div>
-`, len(activites), time.Now().Format("2006-01-02 15:04:05"))
+`, len(activities), time.Now().Format("2006-01-02 15:04:05"))
 }
 
 // --- Main ---
@@ -1391,7 +1396,7 @@ func main() {
 	// Protected
 	mux.Handle("/dashboard", requireLogin(http.HandlerFunc(handleUserDashboard)))
 	mux.Handle("/goals", requireLogin(http.HandlerFunc(handleSetGoals)))
-	mux.Handle("/activities", requireLogin(http.HandlerFunc(handleActivites)))
+	mux.Handle("/activities", requireLogin(http.HandlerFunc(handleactivities)))
 	mux.Handle("/save-goals", requireLogin(http.HandlerFunc(handleSaveGoals)))
 	mux.Handle("/delete-goal", requireLogin(http.HandlerFunc(handleDeleteGoal)))
 	mux.Handle("/sync", requireLogin(http.HandlerFunc(handleSyncActivities)))

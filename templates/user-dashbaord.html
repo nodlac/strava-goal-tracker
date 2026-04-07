@@ -4,7 +4,6 @@
     <h1>{{.Username}}'s Dashboard</h1>
     <p><strong>Measurement Units:</strong> {{.MeasurementLabel}}</p>
     <p><strong>Timezone:</strong> {{.Timezone}}</p>
-    
     <div id="sync-ui">
         <button class="btn btn-primary" hx-post="/sync" hx-target="#sync-ui" hx-indicator="#loading">
             Sync Now
@@ -12,3 +11,4 @@
         <span id="loading" class="htmx-indicator">Syncing...</span>
     </div>
 </main>
+{{template "footer.html" .}}

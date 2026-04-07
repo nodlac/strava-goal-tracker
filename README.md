@@ -39,10 +39,16 @@ docker run -d \
 - [/] build out landin a page.
 - [ ] could cache the user's goals / dashboard queries I'd do that once we see if compute is heavy could even cache it for 30 min or something 
 - [ ] I think it would be neat to have a section where users could see total goal completions.
+- [ ] might be nice to create a function that pulls in all the data that is needed for auth'd pages
 
 ## MVP: Activities
 
+### Step 0: Fix Activities
+- [ ] Something is out of sync with the import and then pulling down to push to activites page
+- [ ] fix duration
+
 ### Step 1: Add pagination parameters to handleActivites
+- [ ] Get activities on page
 - [ ] Parse `page` and `limit` query parameters from URL
 - [ ] Calculate offset: `offset = (page - 1) * limit`
 - [ ] Default to page 1, limit 20-50 per page

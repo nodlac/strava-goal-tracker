@@ -1,5 +1,46 @@
 {{template "header.html" }}
 {{template "nav.html" .}}
+<main>
 
+    <div>
+    {{.Activites}}
+    </div>
+
+    {{if len .Activities }}
+    <div id="past-activity-container">
+        {{range $index, $activity := .Activities}}
+        <div class="activity-card past-activity">
+            <div class="activity-card-header past-activity-header">
+                <div class="past-activity-info">
+                    <span class="past-activity-sport">{{$activity.SportName}}</span>
+                    <span class="past-activity-dates">{{$activity.StartDate.Format "01-02-2006"}} through {{$activity.EndDate.Format "01-02-2006"}}</span>
+                </div>
+                <div class="activity-actions">
+                    <button type="button" class="btn btn-outline-danger btn-sm" onclick="deleteactivity({{$activity.ID}})">Delete</button>
+                </div>
+            </div>
+            <div class="activity-card-body">
+                <div class="activity-row activity-numbers">
+                    <div class="activity-stat">
+                        <span class="activity-stat-label">Distance</span>
+                        <span class="activity-stat-value">{{$activity.Distanceactivity.Float64}}</span>
+                    </div>
+                    <div class="activity-stat">
+                        <span class="activity-stat-label">Elevation</span>
+                        <span class="activity-stat-value">{{$activity.Elevationactivity.Float64}}</span>
+                    </div>
+                    <div class="activity-stat">
+                        <span class="activity-stat-label">Duration</span>
+                        <span class="activity-stat-value">{{$activity.Durationactivity.Float64}}</span>
+                    </div>
+                    <div class="activity-stat">
+                        <span class="activity-stat-label">Includes Virtual</span>
+                        <span class="activity-stat-value">{{if $activity.IncludeVirtual}}Yes{{else}}No{{end}}</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {{end}}
+    {{end}}
 </main>
 {{template "footer.html"}}
