@@ -325,6 +325,11 @@ func loadConfig() {
 
 // --- Database Logic ---
 
+func generatePlaceholders(count int) string {
+	placeholders := strings.Repeat("?, ", count-1) + "?"
+	return "(" + placeholders + ")"
+}
+
 func updateOrCreateUser(auth StravaAuth) (bool, error) {
 	var exists bool
 	// Check if user exists
@@ -382,16 +387,27 @@ func bulkSaveActivities(db *sql.DB, activities []Activity, userStravaID int64) e
 	args := make([]interface{}, 0, len(activities)*numCols)
 
 	for _, act := range activities {
-		placeholders = append(placeholders, "(?, ?, ?, ?, ?, ?)")
+		placeholders = append(placeholders, "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
 		args = append(args,
 			act.ID,
+			&a.Name,
 			userStravaID,
 			act.Type,
 			act.StartDate.Unix(),
 			act.Distance,
 			act.Elevation,
+			&a.StravaActivityID,
+			&a.UserStravaId,
+			&a.ActivityType,
+			&a.StartDate,
+			&a.Distance,
+			&a.Elevation,
+			&a.Duration,
+			&a.Type,
+			&a.Timezone,
 		)
 	}
+
 	query := fmt.Sprintf(`
 			INSERT INTO user_activities (
 				strava_activity_id, 
@@ -564,11 +580,14 @@ func fetchUseractivities(user StravaAuth, limit int, offset int) ([]Activity, er
 		err := rows.Scan(
 			&a.ID,
 			&a.Name,
+			&a.StravaActivityID,
+			&a.UserStravaId,
+			&a.ActivityType,
+			&a.StartDate,
 			&a.Distance,
 			&a.Elevation,
-			&a.Minutes,
+			&a.Duration,
 			&a.Type,
-			&a.StartDate,
 			&a.Timezone,
 		)
 
