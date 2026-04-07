@@ -44,6 +44,9 @@ docker run -d \
 ## MVP: Activities
 
 ### Step 0: Fix Activities
+- [ ] clean up placeholder mess. There has got to be a clean way.
+    - Generate args 
+    - use len(args)
 - [ ] Something is out of sync with the import and then pulling down to push to activites page
 - [ ] fix duration
 
