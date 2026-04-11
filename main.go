@@ -381,12 +381,11 @@ func bulkSaveActivities(db *sql.DB, activities []Activity, userStravaID int64) e
 		return nil
 	}
 
-	numCols := 10
 	placeholders := make([]string, 0, len(activities))
-	args := make([]interface{}, 0, len(activities)*numCols)
+	args := make([]interface{}, 0, len(activities))
 
 	for _, act := range activities {
-		args = append(args,
+		values := []interface{}{
 			act.Name,
 			act.ID,
 			userStravaID,
@@ -396,14 +395,15 @@ func bulkSaveActivities(db *sql.DB, activities []Activity, userStravaID int64) e
 			act.Elevation,
 			act.Duration,
 			act.Timezone,
-		)
-		placeholders = append(placeholders, generatePlaceholders(numCols))
+		}
+		args = append(args, values...)
+		placeholders = append(placeholders, generatePlaceholders(len(values)))
 	}
 
 	query := fmt.Sprintf(`
 			INSERT INTO user_activities (
 				name,
-				ID,
+				id,
 				user_strava_id,
 				type,
 				start_date,
@@ -412,7 +412,7 @@ func bulkSaveActivities(db *sql.DB, activities []Activity, userStravaID int64) e
 				duration,
 				timezone
 			) VALUES %s
-			ON CONFLICT(strava_activity_id) DO UPDATE SET
+			ON CONFLICT(id) DO UPDATE SET
 				name = EXCLUDED.name,
 				user_strava_id = EXCLUDED.user_strava_id,
 				type = EXCLUDED.type,
@@ -1131,8 +1131,14 @@ func goLogout(w http.ResponseWriter, r *http.Request) {
 }
 
 func errorPage(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "text/html")
-	fmt.Fprintf(w, "<h1>Uh Oh</h1><p>An error has occurred.</p><a href='/'>Home</a>")
+	executeTemplate(w, "error.html", nil)
+}
+
+func notFoundPage(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotFound)
+	executeTemplate(w, "error.html", map[string]interface{}{
+		"NotFound": true,
+	})
 }
 
 func termsPage(w http.ResponseWriter, r *http.Request) {
@@ -1405,6 +1411,7 @@ func main() {
 	mux.HandleFunc("/logout", goLogout)
 	mux.HandleFunc("/exchange_token", exchangeToken)
 	mux.HandleFunc("/error", errorPage)
+	mux.HandleFunc("/404", notFoundPage)
 	mux.Handle("/terms", requireLogin(http.HandlerFunc(termsPage)))
 	mux.Handle("/privacy", requireLogin(http.HandlerFunc(privacyPage)))
 
