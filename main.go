@@ -143,17 +143,16 @@ type GoalFormWrapper struct {
 }
 
 type Activity struct {
-	ID               int64     `json:"id"`
-	Name             string    `json:"name"`
-	StravaActivityID int64     `json:"strava_activity_id"`
-	UserStravaId     int64     `json:"user_strava_id"`
-	ActivityType     string    `json:"activity_type"`
-	StartDate        time.Time `json:"start_date"`
-	Distance         float64   `json:"distance"`
-	Elevation        float64   `json:"total_elevation_gain"`
-	Duration         int       `json:"moving_time"`
-	Type             string    `json:"type"`
-	Timezone         string    `json:"timezone"`
+	Name         string    `json:"name"`
+	ID           int64     `json:"id"`
+	UserStravaId int64     `json:"athlete.id"`
+	ActivityType string    `json:"activity_type"`
+	StartDate    time.Time `json:"start_date"`
+	Distance     float64   `json:"distance"`
+	Elevation    float64   `json:"total_elevation_gain"`
+	Duration     int       `json:"moving_time"`
+	Type         string    `json:"type"`
+	Timezone     string    `json:"timezone"`
 }
 
 // Templates
@@ -298,14 +297,16 @@ func initDB() {
 
 	acitiviesQuery := `
 		   CREATE TABLE IF NOT EXISTS user_activities (
-				id INTEGER PRIMARY KEY AUTOINCREMENT,
-				strava_activity_id INTEGER UNIQUE,
+				id INTEGER UNIQUE PRIMARY KEY,
+				name STRING,
 				user_strava_id INTEGER,
 				activity_type TEXT,
+				type TEXT,
 				start_date INTEGER,
 				distance REAL,
 				elevation_gain REAL,
 				duration REAL,
+				timezone TEXT,
 				FOREIGN KEY(user_strava_id) REFERENCES users(strava_id)
 			);`
 	if _, err := db.Exec(acitiviesQuery); err != nil {
@@ -382,46 +383,54 @@ func bulkSaveActivities(db *sql.DB, activities []Activity, userStravaID int64) e
 		return nil
 	}
 
-	numCols := 6
+	numCols := 10
 	placeholders := make([]string, 0, len(activities))
 	args := make([]interface{}, 0, len(activities)*numCols)
 
 	for _, act := range activities {
-		placeholders = append(placeholders, "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
 		args = append(args,
+			act.Name,
 			act.ID,
-			&a.Name,
 			userStravaID,
+			act.ActivityType,
 			act.Type,
 			act.StartDate.Unix(),
 			act.Distance,
 			act.Elevation,
-			&a.StravaActivityID,
-			&a.UserStravaId,
-			&a.ActivityType,
-			&a.StartDate,
-			&a.Distance,
-			&a.Elevation,
-			&a.Duration,
-			&a.Type,
-			&a.Timezone,
+			act.Duration,
+			act.Timezone,
 		)
+		placeholders = append(placeholders, generatePlaceholders(numCols))
 	}
 
 	query := fmt.Sprintf(`
 			INSERT INTO user_activities (
-				strava_activity_id, 
-				user_strava_id, 
-				activity_type, 
-				start_date, 
-				distance, 
-				elevation_gain
+				name,
+				ID,
+				user_strava_id,
+				activity_type,
+				type,
+				start_date,
+				distance,
+				elevation_gain,
+				duration,
+				timezone
 			) VALUES %s
-			ON CONFLICT(strava_activity_id) DO NOTHING;`,
+			ON CONFLICT(strava_activity_id) DO UPDATE SET
+				name = EXCLUDED.name,
+				user_strava_id = EXCLUDED.user_strava_id,
+				activity_type = EXCLUDED.activity_type,
+				type = EXCLUDED.type,
+				start_date = EXCLUDED.start_date,
+				distance = EXCLUDED.distance,
+				elevation_gain = EXCLUDED.elevation_gain,
+				duration = EXCLUDED.duration,
+				timezone = EXCLUDED.timezone;`,
 		strings.Join(placeholders, ","))
 
 	result, err := db.Exec(query, args...)
 	if err != nil {
+		slog.Error("Failed to add activities", "error", err)
 		return fmt.Errorf("failed to update user meta: %w", err)
 	}
 
@@ -580,7 +589,6 @@ func fetchUseractivities(user StravaAuth, limit int, offset int) ([]Activity, er
 		err := rows.Scan(
 			&a.ID,
 			&a.Name,
-			&a.StravaActivityID,
 			&a.UserStravaId,
 			&a.ActivityType,
 			&a.StartDate,
@@ -907,7 +915,6 @@ func syncActivities(user StravaAuth) ([]Activity, error) {
 
 		if len(currentBatch) < activitiesPerPage {
 			break
-
 		}
 		page++
 		time.Sleep(100 * time.Millisecond)

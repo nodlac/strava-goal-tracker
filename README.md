@@ -44,11 +44,11 @@ docker run -d \
 ## MVP: Activities
 
 ### Step 0: Fix Activities
-- [ ] clean up placeholder mess. There has got to be a clean way.
-    - Generate args 
-    - use len(args)
-- [ ] Something is out of sync with the import and then pulling down to push to activites page
-- [ ] fix duration
+- [x] clean up placeholder mess. There has got to be a clean way.
+- [x] Something is out of sync with the import and then pulling down to push to activites page
+- [x] fix duration (I think this is fixed)
+- [ ] something is still wrong activity type is reported weird just run a query with columns and I bet it will be obvious
+
 
 ### Step 1: Add pagination parameters to handleActivites
 - [ ] Get activities on page
