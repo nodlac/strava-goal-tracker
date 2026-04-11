@@ -146,7 +146,6 @@ type Activity struct {
 	Name         string    `json:"name"`
 	ID           int64     `json:"id"`
 	UserStravaId int64     `json:"athlete.id"`
-	ActivityType string    `json:"activity_type"`
 	StartDate    time.Time `json:"start_date"`
 	Distance     float64   `json:"distance"`
 	Elevation    float64   `json:"total_elevation_gain"`
@@ -300,7 +299,6 @@ func initDB() {
 				id INTEGER UNIQUE PRIMARY KEY,
 				name STRING,
 				user_strava_id INTEGER,
-				activity_type TEXT,
 				type TEXT,
 				start_date INTEGER,
 				distance REAL,
@@ -392,7 +390,6 @@ func bulkSaveActivities(db *sql.DB, activities []Activity, userStravaID int64) e
 			act.Name,
 			act.ID,
 			userStravaID,
-			act.ActivityType,
 			act.Type,
 			act.StartDate.Unix(),
 			act.Distance,
@@ -408,7 +405,6 @@ func bulkSaveActivities(db *sql.DB, activities []Activity, userStravaID int64) e
 				name,
 				ID,
 				user_strava_id,
-				activity_type,
 				type,
 				start_date,
 				distance,
@@ -419,7 +415,6 @@ func bulkSaveActivities(db *sql.DB, activities []Activity, userStravaID int64) e
 			ON CONFLICT(strava_activity_id) DO UPDATE SET
 				name = EXCLUDED.name,
 				user_strava_id = EXCLUDED.user_strava_id,
-				activity_type = EXCLUDED.activity_type,
 				type = EXCLUDED.type,
 				start_date = EXCLUDED.start_date,
 				distance = EXCLUDED.distance,
@@ -475,20 +470,20 @@ func updateSyncMeta(user StravaAuth) error {
 }
 
 func getUserActivityTotals(user StravaAuth) {
-	// sqlite>  SELECT  sum(distance)/1609.3, sum(elevation_gain)*3.28084 from user_activities where activity_type like '%Ride';
+	// sqlite>  SELECT  sum(distance)/1609.3, sum(elevation_gain)*3.28084 from user_activities where type like '%Ride';
 	// 351.593115018952|23175.85376
-	// sqlite>  SELECT  sum(distance)/1609.3, sum(elevation_gain)*3.28084 from user_activities where activity_type like '%Run';
+	// sqlite>  SELECT  sum(distance)/1609.3, sum(elevation_gain)*3.28084 from user_activities where type like '%Run';
 	// 169.498850431865|23462.271092
-	// sqlite>  SELECT  sum(distance)/1609.3, sum(elevation_gain)*3.28084 from user_activities where activity_type like '%Swim';
+	// sqlite>  SELECT  sum(distance)/1609.3, sum(elevation_gain)*3.28084 from user_activities where type like '%Swim';
 	// 5.65363822780091|0.0
 }
 
 func getUserActvitiesByMonth(user StravaAuth) {
-	// sqlite>  SELECT  sum(distance)/1609.3, sum(elevation_gain)*3.28084 from user_activities where activity_type like '%Ride';
+	// sqlite>  SELECT  sum(distance)/1609.3, sum(elevation_gain)*3.28084 from user_activities where type like '%Ride';
 	// 351.593115018952|23175.85376
-	// sqlite>  SELECT  sum(distance)/1609.3, sum(elevation_gain)*3.28084 from user_activities where activity_type like '%Run';
+	// sqlite>  SELECT  sum(distance)/1609.3, sum(elevation_gain)*3.28084 from user_activities where type like '%Run';
 	// 169.498850431865|23462.271092
-	// sqlite>  SELECT  sum(distance)/1609.3, sum(elevation_gain)*3.28084 from user_activities where activity_type like '%Swim';
+	// sqlite>  SELECT  sum(distance)/1609.3, sum(elevation_gain)*3.28084 from user_activities where type like '%Swim';
 	// 5.65363822780091|0.0
 }
 
@@ -590,7 +585,6 @@ func fetchUseractivities(user StravaAuth, limit int, offset int) ([]Activity, er
 			&a.ID,
 			&a.Name,
 			&a.UserStravaId,
-			&a.ActivityType,
 			&a.StartDate,
 			&a.Distance,
 			&a.Elevation,
@@ -1262,7 +1256,7 @@ func handleSaveGoals(w http.ResponseWriter, r *http.Request) {
 			}
 			duration := 0.0
 			if g.Duration != nil {
-				duration = *g.Duration * HrTosec
+				duration = *g.Duration * SecToHr
 			}
 
 			if distance+elevation+duration == 0 {

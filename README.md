@@ -43,13 +43,6 @@ docker run -d \
 
 ## MVP: Activities
 
-### Step 0: Fix Activities
-- [x] clean up placeholder mess. There has got to be a clean way.
-- [x] Something is out of sync with the import and then pulling down to push to activites page
-- [x] fix duration (I think this is fixed)
-- [ ] something is still wrong activity type is reported weird just run a query with columns and I bet it will be obvious
-
-
 ### Step 1: Add pagination parameters to handleActivites
 - [ ] Get activities on page
 - [ ] Parse `page` and `limit` query parameters from URL
@@ -199,3 +192,7 @@ activities, _ := fetchUserActivites(user, limit, offset)
 - [x] add current, past, all param to fetch goals. then build our past goals section. 
 - [x] only pull in current goals to goal page. Allow deleting of old goals (Need to scope to current goals)
 - [x] Goal history just put below current goals limit to 10 with pagitation.
+- [x] clean up placeholder mess. There has got to be a clean way.
+- [x] Something is out of sync with the import and then pulling down to push to activites page
+- [x] fix duration (I think this is fixed)
+- [x] something is still wrong activity type is reported weird just run a query with columns and I bet it will be obvious
