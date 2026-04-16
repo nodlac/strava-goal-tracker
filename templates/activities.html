@@ -1,42 +1,326 @@
 {{template "header.html" }}
 {{template "nav.html" .}}
 <main>
+    <div class="activities-page">
+        <div class="page-header">
+            <h1>Activities</h1>
+        </div>
 
-    <div>
-    {{.Activites}}
-    </div>
+        <div class="activities-filters">
+            <div class="filter-group">
+                <label for="sport-filter">Sport</label>
+                <select id="sport-filter" class="filter-select">
+                    <option value="">All Sports</option>
+                    <option value="Run">Run</option>
+                    <option value="Ride">Ride</option>
+                    <option value="Swim">Swim</option>
+                    <option value="Hike">Hike</option>
+                    <option value="Walk">Walk</option>
+                    <option value="Workout">Workout</option>
+                </select>
+            </div>
+            <div class="filter-group">
+                <label for="time-filter">Time Range</label>
+                <select id="time-filter" class="filter-select">
+                    <option value="">All Time</option>
+                    <option value="7">Last 7 Days</option>
+                    <option value="30">Last 30 Days</option>
+                    <option value="90">Last 90 Days</option>
+                    <option value="365">Last Year</option>
+                </select>
+            </div>
+            <div class="filter-group">
+                <label for="page-size">Per Page</label>
+                <select id="page-size" class="filter-select">
+                    <option value="25">25</option>
+                    <option value="50" selected>50</option>
+                    <option value="100">100</option>
+                </select>
+            </div>
+        </div>
 
-    {{if len .Activities }}
-    <div id="past-activity-container">
-        {{range $index, $activity := .Activities}}
-        <div class="activity-card past-activity">
-            <div class="activity-card-header past-activity-header">
-                <div class="past-activity-info">
-                    <span class="past-activity-sport">{{$activity.Type}}</span>
-                    <span class="past-activity-date">{{$activity.StartDate.Format "01-02-2006"}}</span>
-                </div>
-            </div>
-            <div class="activity-card-body">
-                <div class="activity-row activity-numbers">
-                    <div class="activity-stat">
-                        <span class="activity-stat-label">Distance</span>
-                        <span class="activity-stat-value">{{$activity.Distance}}</span>
+        <div class="activities-summary">
+            <span class="activity-count">{{len .Activities}} activities</span>
+        </div>
+
+        {{if .Activities}}
+        <div class="activities-grid">
+            {{range $activity := .Activities}}
+            <div class="activity-card" data-sport="{{$activity.Type}}">
+                <div class="activity-card-header">
+                    <div class="activity-sport-badge sport-{{$activity.Type}}">
+                        {{$activity.Type}}
                     </div>
-                    <div class="activity-stat">
-                        <span class="activity-stat-label">Elevation</span>
-                        <span class="activity-stat-value">{{$activity.Elevation}}</span>
-                    </div>
-                    <div class="activity-stat">
-                        <span class="activity-stat-label">Duration</span>
-                        <span class="activity-stat-value">{{$activity.Duration}}</span>
+                    <div class="activity-date">
+                        {{$activity.StartDate.Format "Jan 02, 2006"}}
                     </div>
                 </div>
-            </div>
-                <div class="activity-actions">
+                <div class="activity-card-body">
+                    <div class="activity-name">{{$activity.Name}}</div>
+                    <div class="activity-stats">
+                        <div class="activity-stat">
+                            <span class="stat-label">Distance</span>
+                            <span class="stat-value">{{printf "%.1f" $activity.Distance}} <span class="stat-unit">m</span></span>
+                        </div>
+                        <div class="activity-stat">
+                            <span class="stat-label">Elevation</span>
+                            <span class="stat-value">{{printf "%.0f" $activity.Elevation}} <span class="stat-unit">m</span></span>
+                        </div>
+                        <div class="activity-stat">
+                            <span class="stat-label">Duration</span>
+                            <span class="stat-value">{{$activity.Duration | formatDuration}}</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="activity-card-footer">
                     <button type="button" class="btn btn-outline-danger btn-sm" onclick="deleteactivity({{$activity.ID}})">Delete</button>
                 </div>
+            </div>
+            {{end}}
+        </div>
+
+        <div class="pagination">
+            <button class="btn btn-secondary" disabled>Previous</button>
+            <span class="page-info">Page 1</span>
+            <button class="btn btn-secondary" disabled>Next</button>
+        </div>
+        {{else}}
+        <div class="empty-state">
+            <p>No activities found. Sync with Strava to see your activities.</p>
         </div>
         {{end}}
-    {{end}}
+    </div>
 </main>
 {{template "footer.html"}}
+
+<style>
+.activities-page {
+    max-width: 1200px;
+    margin: 0 auto;
+}
+
+.page-header {
+    margin-bottom: 24px;
+}
+
+.page-header h1 {
+    font-size: 32px;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin: 0;
+}
+
+.activities-filters {
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+    background: var(--bg-primary);
+    padding: 20px;
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--border-color);
+    margin-bottom: 20px;
+}
+
+.filter-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 140px;
+    flex: 1;
+}
+
+.filter-group label {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    margin: 0;
+}
+
+.filter-select {
+    padding: 10px 14px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius);
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    font-size: 14px;
+    cursor: pointer;
+}
+
+.filter-select:focus {
+    outline: none;
+    border-color: var(--accent-blue);
+}
+
+.activities-summary {
+    margin-bottom: 16px;
+}
+
+.activity-count {
+    font-size: 14px;
+    color: var(--text-secondary);
+}
+
+.activities-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 16px;
+    margin-bottom: 24px;
+}
+
+.activity-card {
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    box-shadow: var(--shadow);
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.activity-card:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-lg);
+}
+
+.activity-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 14px 16px;
+    background: var(--bg-tertiary);
+    border-bottom: 1px solid var(--border-color);
+}
+
+.activity-sport-badge {
+    padding: 4px 10px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.sport-Run { background: rgba(158, 206, 106, 0.2); color: var(--accent-green); }
+.sport-Ride { background: rgba(122, 162, 247, 0.2); color: var(--accent-blue); }
+.sport-Swim { background: rgba(125, 207, 255, 0.2); color: var(--accent-cyan); }
+.sport-Hike { background: rgba(187, 154, 247, 0.2); color: var(--accent-purple); }
+.sport-Walk { background: rgba(255, 158, 100, 0.2); color: var(--accent-orange); }
+.sport-Workout { background: rgba(224, 175, 104, 0.2); color: var(--accent-yellow); }
+
+.activity-date {
+    font-size: 13px;
+    color: var(--text-secondary);
+}
+
+.activity-card-body {
+    padding: 16px;
+}
+
+.activity-name {
+    font-size: 15px;
+    font-weight: 500;
+    color: var(--text-primary);
+    margin-bottom: 12px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.activity-stats {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+}
+
+.activity-stat {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.stat-label {
+    font-size: 11px;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.stat-value {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.stat-unit {
+    font-size: 11px;
+    font-weight: 400;
+    color: var(--text-secondary);
+}
+
+.activity-card-footer {
+    padding: 12px 16px;
+    border-top: 1px solid var(--border-color);
+    display: flex;
+    justify-content: flex-end;
+}
+
+.pagination {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 16px;
+    padding: 20px;
+}
+
+.page-info {
+    font-size: 14px;
+    color: var(--text-secondary);
+}
+
+.empty-state {
+    text-align: center;
+    padding: 60px 20px;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
+}
+
+.empty-state p {
+    color: var(--text-secondary);
+    margin: 0;
+}
+
+@media (max-width: 768px) {
+    .activities-filters {
+        flex-direction: column;
+        padding: 16px;
+    }
+
+    .filter-group {
+        width: 100%;
+    }
+
+    .activities-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .activity-stats {
+        grid-template-columns: repeat(3, 1fr);
+    }
+
+    .activity-card-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 8px;
+    }
+
+    .page-header h1 {
+        font-size: 24px;
+    }
+}
+
+@media (min-width: 769px) and (max-width: 1024px) {
+    .activities-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+</style>
