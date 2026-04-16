@@ -43,6 +43,8 @@ docker run -d \
 
 ## MVP: Activities
 
+- [ ] setup env var system and pull down envars
+
 ### Step 1: Add pagination parameters to handleActivites
 - [ ] Get activities on page
 - [ ] Parse `page` and `limit` query parameters from URL

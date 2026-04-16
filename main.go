@@ -390,7 +390,7 @@ func bulkSaveActivities(db *sql.DB, activities []Activity, userStravaID int64) e
 			act.ID,
 			userStravaID,
 			act.Type,
-			act.StartDate.Unix(),
+			act.StartDate,
 			act.Distance,
 			act.Elevation,
 			act.Duration,
@@ -560,11 +560,19 @@ func fetchNonElevationSports() ([]Sport, error) {
 	return sports, nil
 }
 
-func fetchUseractivities(user StravaAuth, limit int, offset int) ([]Activity, error) {
+func fetchUserActivities(user StravaAuth, limit int, offset int) ([]Activity, error) {
 	var activities []Activity
 	query := `
 		SELECT 
-			*
+			id,
+			name,
+			user_strava_id,
+			start_date,
+			distance,
+			elevation_gain,
+			duration,
+			type,
+			timezone
 		FROM user_activities
 		WHERE user_strava_id = ?	
 		ORDER BY start_date desc
@@ -581,21 +589,28 @@ func fetchUseractivities(user StravaAuth, limit int, offset int) ([]Activity, er
 
 	for rows.Next() {
 		var a Activity
+		var startDateStr string
 		err := rows.Scan(
 			&a.ID,
 			&a.Name,
 			&a.UserStravaId,
-			&a.StartDate,
+			&startDateStr,
 			&a.Distance,
 			&a.Elevation,
 			&a.Duration,
 			&a.Type,
 			&a.Timezone,
 		)
-
 		if err != nil {
 			return nil, err
 		}
+
+		a.StartDate, err = time.Parse("2006-01-02 15:04:05 +0000 UTC", startDateStr)
+		if err != nil {
+			slog.Error("Error converting activity timestamp", "error", err)
+			continue
+		}
+		activities = append(activities, a)
 	}
 	return activities, nil
 }
@@ -1112,14 +1127,14 @@ func handleactivities(w http.ResponseWriter, r *http.Request) {
 	limit := 20
 	offset := 0
 
-	activities, err := fetchUseractivities(user, limit, offset)
+	activities, err := fetchUserActivities(user, limit, offset)
 	if err != nil {
 		slog.Error("Failed to fetch activities", "error", err)
 	}
 
 	executeTemplate(w, "activities.html", map[string]interface{}{
-		// "Username":         user.Athlete.Username,
-		// "ProfileImg":       user.Athlete.ProfileImg,
+		"Username":         user.Athlete.Username,
+		"ProfileImg":       user.Athlete.ProfileImg,
 		"Activities": activities,
 	})
 
