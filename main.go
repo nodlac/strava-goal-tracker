@@ -41,6 +41,7 @@ const (
 
 	HrTosec = 3600.0
 	SecToHr = 0.0002777777777777778
+
 )
 
 type contextKey string
@@ -875,26 +876,31 @@ func syncActivities(user StravaAuth) ([]Activity, error) {
 		loc = time.UTC
 	}
 
-	var syncUnix sql.NullInt64
+	DefaultActivityStart := time.Date(time.Now().Year(), time.January, 1, 0, 0, 0, 0, loc).AddDate(0, 0, -1).Unix()
+
+	var syncTimeText string
 	err = db.QueryRow(
 		`SELECT 
 				MAX(start_date)
 			FROM user_activities 
 			WHERE user_strava_id = ?`,
 		user.Athlete.ID).Scan(
-		&syncUnix)
+		&syncTimeText)
 
 	var syncDate int64
 	if err != nil && err != sql.ErrNoRows {
 		return nil, fmt.Errorf("database error: %w", err)
 	}
-	if syncUnix.Valid && syncUnix.Int64 > 0 {
-		// We found a previous sync!
-		syncDate = syncUnix.Int64
+	if syncTimeText != "" {
+		syncTime, err := time.Parse("2006-01-02 15:04:05 +0000 UTC", syncTimeText)
+		if err != nil {
+			syncDate = DefaultActivityStart
+		}
+		syncDate = syncTime.Unix()
 	} else {
 		// New User: Default to the beginning of the current year
 		// We calculate the Unix timestamp for Jan 1st
-		syncDate = time.Date(time.Now().Year(), time.January, 1, 0, 0, 0, 0, loc).AddDate(0, 0, -1).Unix()
+		syncDate = DefaultActivityStart
 	}
 
 	var activities []Activity
