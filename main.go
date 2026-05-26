@@ -41,7 +41,6 @@ const (
 
 	HrTosec = 3600.0
 	SecToHr = 0.0002777777777777778
-
 )
 
 type contextKey string
@@ -470,24 +469,6 @@ func updateSyncMeta(user StravaAuth) error {
 	return nil
 }
 
-func getUserActivityTotals(user StravaAuth) {
-	// sqlite>  SELECT  sum(distance)/1609.3, sum(elevation_gain)*3.28084 from user_activities where type like '%Ride';
-	// 351.593115018952|23175.85376
-	// sqlite>  SELECT  sum(distance)/1609.3, sum(elevation_gain)*3.28084 from user_activities where type like '%Run';
-	// 169.498850431865|23462.271092
-	// sqlite>  SELECT  sum(distance)/1609.3, sum(elevation_gain)*3.28084 from user_activities where type like '%Swim';
-	// 5.65363822780091|0.0
-}
-
-func getUserActvitiesByMonth(user StravaAuth) {
-	// sqlite>  SELECT  sum(distance)/1609.3, sum(elevation_gain)*3.28084 from user_activities where type like '%Ride';
-	// 351.593115018952|23175.85376
-	// sqlite>  SELECT  sum(distance)/1609.3, sum(elevation_gain)*3.28084 from user_activities where type like '%Run';
-	// 169.498850431865|23462.271092
-	// sqlite>  SELECT  sum(distance)/1609.3, sum(elevation_gain)*3.28084 from user_activities where type like '%Swim';
-	// 5.65363822780091|0.0
-}
-
 func fetchSports() ([]Sport, error) {
 	var sports []Sport
 	rows, err := db.Query(
@@ -561,6 +542,24 @@ func fetchNonElevationSports() ([]Sport, error) {
 	return sports, nil
 }
 
+func fetchUserActivityCount(user StravaAuth) (int, error) {
+	count := 0
+	query := `
+		SELECT 
+			COUNT(*)
+		FROM user_activities
+		WHERE user_strava_id = ?	
+	`
+	err := db.QueryRow(
+		query,
+		user.Athlete.ID).Scan(&count)
+	if err != nil {
+		return 0, err
+	}
+
+	return count, nil
+}
+
 func fetchUserActivities(user StravaAuth, limit int, offset int) ([]Activity, error) {
 	var activities []Activity
 	query := `
@@ -582,7 +581,9 @@ func fetchUserActivities(user StravaAuth, limit int, offset int) ([]Activity, er
 	`
 	rows, err := db.Query(
 		query,
-		user.Athlete.ID, limit, offset)
+		user.Athlete.ID,
+		limit,
+		offset)
 	if err != nil {
 		return nil, err
 	}
@@ -1123,25 +1124,60 @@ func handleUserDashboard(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleactivities(w http.ResponseWriter, r *http.Request) {
-	// need to figure out pagination.
+	var err error
+	limit := 50
+	limitStr := r.Form.Get("limit")
+	if limitStr != "" {
+		limit, err = strconv.Atoi(limitStr)
+		if err != nil {
+			slog.Error("Error parsing activity limit", "error", err)
+			http.Error(w, "Bad Request: Activity Limit", http.StatusBadRequest)
+			return
+		}
+	}
+	if limit <= 0 {
+		limit = 50
+	}
+	if limit > 100 {
+		limit = 100
+	}
+	offsetStr := r.Form.Get("offset")
+	offset := 0
+	if offsetStr != "" {
+		offset, err = strconv.Atoi(offsetStr)
+		if err != nil {
+			slog.Error("Error parsing activity offset", "error", err)
+			http.Error(w, "Bad Request: Activity offset", http.StatusBadRequest)
+			return
+		}
+	}
+	if offset < 0  {
+		offset = 0
+	}
 	user, ok := r.Context().Value(userContextKey).(StravaAuth)
 	if !ok {
 		slog.Error("Context fetch failed")
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return
 	}
-	limit := 20
-	offset := 0
 
 	activities, err := fetchUserActivities(user, limit, offset)
 	if err != nil {
 		slog.Error("Failed to fetch activities", "error", err)
 	}
 
+	activityCount, err := fetchUserActivityCount(user)
+	if err != nil {
+		slog.Error("Failed to fetch activity count", "error", err)
+	}
+
+	pagesCount := activityCount / limit
+
 	executeTemplate(w, "activities.html", map[string]interface{}{
-		"Username":         user.Athlete.Username,
-		"ProfileImg":       user.Athlete.ProfileImg,
+		"Username":   user.Athlete.Username,
+		"ProfileImg": user.Athlete.ProfileImg,
 		"Activities": activities,
+		"PagesCount": pagesCount,
 	})
 
 }
