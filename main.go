@@ -31,6 +31,7 @@ import (
 
 const (
 	KmToMeters    = 1000.0
+	MetersToKm    = 0.0001
 	MetersToYards = 1.09361
 	MetersToMiles = 0.000621371
 	MetersToFeet  = 3.28084
@@ -162,12 +163,18 @@ var decoder = schema.NewDecoder()
 
 func init() {
 	_ = godotenv.Load()
-	tmpl = template.Must(template.ParseGlob("templates/*.html"))
-	tmpl.Funcs(template.FuncMap{
+
+	tmpl = template.Must(template.New("").Funcs(template.FuncMap{
 		"add": func(a, b int) int {
 			return a + b
 		},
-	})
+		"formatTime": func(a int) string {
+			hours := a / 3600
+			minutes := (a % 3600 / 60)
+			seconds := a % 60
+			return fmt.Sprintf("%d:%02d:%02d", hours, minutes, seconds)
+		},
+	}).ParseGlob("templates/*.html"))
 
 	decoder.RegisterConverter(time.Time{}, func(value string) reflect.Value {
 		if v, err := time.Parse("2006-01-02", value); err == nil {
@@ -176,7 +183,6 @@ func init() {
 		return reflect.ValueOf(time.Time{})
 
 	})
-
 }
 
 func executeTemplate(w http.ResponseWriter, name string, data interface{}) {
@@ -1125,35 +1131,31 @@ func handleUserDashboard(w http.ResponseWriter, r *http.Request) {
 
 func handleactivities(w http.ResponseWriter, r *http.Request) {
 	var err error
-	limit := 50
 	limitStr := r.Form.Get("limit")
-	if limitStr != "" {
-		limit, err = strconv.Atoi(limitStr)
-		if err != nil {
-			slog.Error("Error parsing activity limit", "error", err)
-			http.Error(w, "Bad Request: Activity Limit", http.StatusBadRequest)
-			return
-		}
+
+	limit, err := strconv.Atoi(limitStr)
+	if err != nil {
+		slog.Error("Error parsing activity limit", "error", err)
 	}
+
 	if limit <= 0 {
-		limit = 50
-	}
-	if limit > 100 {
+		limit = 25
+	} else if limit > 100 {
 		limit = 100
 	}
+
 	offsetStr := r.Form.Get("offset")
-	offset := 0
-	if offsetStr != "" {
-		offset, err = strconv.Atoi(offsetStr)
-		if err != nil {
-			slog.Error("Error parsing activity offset", "error", err)
-			http.Error(w, "Bad Request: Activity offset", http.StatusBadRequest)
-			return
-		}
+	offset, err := strconv.Atoi(offsetStr)
+	if err != nil {
+		slog.Error("Error parsing activity offset", "error", err)
 	}
-	if offset < 0  {
+
+	if offset < 0 {
 		offset = 0
 	}
+
+	offset = offset / limit
+
 	user, ok := r.Context().Value(userContextKey).(StravaAuth)
 	if !ok {
 		slog.Error("Context fetch failed")
@@ -1171,13 +1173,37 @@ func handleactivities(w http.ResponseWriter, r *http.Request) {
 		slog.Error("Failed to fetch activity count", "error", err)
 	}
 
-	pagesCount := activityCount / limit
+	// NOTE: This might be better if it were in the fetch activities func assuming
+	// everywhere we want this data it gets converted.
+	// It's also possible that it might need to me a helper func.
+
+	elevationUnit := "m"
+	distanceUnit := "km"
+
+	if user.Athlete.MeasurementUnit == "feet" {
+		elevationUnit = "ft"
+		distanceUnit = "m"
+		for i := range activities {
+			activities[i].Distance = activities[i].Distance * MetersToMiles
+			activities[i].Elevation = activities[i].Elevation * MetersToFeet
+		}
+	} else {
+		for i := range activities {
+			activities[i].Distance = activities[i].Distance * MetersToKm
+		}
+	}
+
+	pagesCount := activityCount/limit + 1
+	currentPage := offset / limit
 
 	executeTemplate(w, "activities.html", map[string]interface{}{
-		"Username":   user.Athlete.Username,
-		"ProfileImg": user.Athlete.ProfileImg,
-		"Activities": activities,
-		"PagesCount": pagesCount,
+		"Username":      user.Athlete.Username,
+		"ProfileImg":    user.Athlete.ProfileImg,
+		"ElevationUnit": elevationUnit,
+		"DistanceUnit":  distanceUnit,
+		"Activities":    activities,
+		"PagesCount":    pagesCount,
+		"CurrentPage":   currentPage,
 	})
 
 }

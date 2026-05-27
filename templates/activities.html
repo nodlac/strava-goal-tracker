@@ -27,15 +27,15 @@
                     <div class="activity-stats">
                         <div class="activity-stat">
                             <span class="stat-label">Distance</span>
-                            <span class="stat-value">{{printf "%.1f" $activity.Distance}} <span class="stat-unit">m</span></span>
+                            <span class="stat-value">{{printf "%.1f" $activity.Distance}} <span class="stat-unit">{{$.DistanceUnit}}</span></span>
                         </div>
                         <div class="activity-stat">
                             <span class="stat-label">Elevation</span>
-                            <span class="stat-value">{{printf "%.0f" $activity.Elevation}} <span class="stat-unit">m</span></span>
+                            <span class="stat-value">{{printf "%.0f" $activity.Elevation}} <span class="stat-unit">{{$.ElevationUnit}}</span></span>
                         </div>
                         <div class="activity-stat">
                             <span class="stat-label">Duration</span>
-                            <span class="stat-value">{{$activity.Duration}}</span>
+                            <span class="stat-value">{{formatTime $activity.Duration}}</span>
                         </div>
                     </div>
                 </div>
@@ -50,7 +50,7 @@
             <span></span>
             <div class="pagination-controls">
                 <button class="btn btn-secondary" disabled>Previous</button>
-                <span class="page-info">Page 1</span>
+                <span class="page-info">Page {{.CurrentPage}}</span>
                 <button class="btn btn-secondary" disabled>Next</button>
             </div>
             <form method="GET" action="/activities">
