@@ -1131,30 +1131,32 @@ func handleUserDashboard(w http.ResponseWriter, r *http.Request) {
 
 func handleactivities(w http.ResponseWriter, r *http.Request) {
 	var err error
+	err = r.ParseForm()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
 	limitStr := r.Form.Get("limit")
 
 	limit, err := strconv.Atoi(limitStr)
 	if err != nil {
-		slog.Error("Error parsing activity limit", "error", err)
+		slog.Warn("Error parsing activity limit", "error", err)
 	}
 
 	if limit <= 0 {
-		limit = 25
+		limit = 10
 	} else if limit > 100 {
 		limit = 100
 	}
 
-	offsetStr := r.Form.Get("offset")
-	offset, err := strconv.Atoi(offsetStr)
-	if err != nil {
-		slog.Error("Error parsing activity offset", "error", err)
+	pageStr := r.Form.Get("page")
+	pageNum, err := strconv.Atoi(pageStr)
+	if err != nil || pageNum < 1 {
+		pageNum = 1
 	}
 
-	if offset < 0 {
-		offset = 0
-	}
-
-	offset = offset / limit
+	offset := (pageNum - 1) * limit
 
 	user, ok := r.Context().Value(userContextKey).(StravaAuth)
 	if !ok {
@@ -1173,10 +1175,6 @@ func handleactivities(w http.ResponseWriter, r *http.Request) {
 		slog.Error("Failed to fetch activity count", "error", err)
 	}
 
-	// NOTE: This might be better if it were in the fetch activities func assuming
-	// everywhere we want this data it gets converted.
-	// It's also possible that it might need to me a helper func.
-
 	elevationUnit := "m"
 	distanceUnit := "km"
 
@@ -1193,8 +1191,24 @@ func handleactivities(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	pagesCount := activityCount/limit + 1
-	currentPage := offset / limit
+	totalPages := (activityCount + limit - 1) / limit
+	if totalPages < 1 {
+		totalPages = 1
+	}
+	currentPage := pageNum
+
+	pageList := []int{}
+	start := currentPage - 3
+	if start < 1 {
+		start = 1
+	}
+	end := currentPage + 3
+	if end > totalPages {
+		end = totalPages
+	}
+	for i := start; i <= end; i++ {
+		pageList = append(pageList, i)
+	}
 
 	executeTemplate(w, "activities.html", map[string]interface{}{
 		"Username":      user.Athlete.Username,
@@ -1202,8 +1216,11 @@ func handleactivities(w http.ResponseWriter, r *http.Request) {
 		"ElevationUnit": elevationUnit,
 		"DistanceUnit":  distanceUnit,
 		"Activities":    activities,
-		"PagesCount":    pagesCount,
+		"TotalPages":    totalPages,
 		"CurrentPage":   currentPage,
+		"PageList":      pageList,
+		"ShowMax":       totalPages > currentPage+3,
+		"Limit":         limit,
 	})
 
 }
