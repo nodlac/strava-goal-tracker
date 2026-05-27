@@ -7,6 +7,7 @@
 
     <div class="activities-summary">
       <span class="activity-count">{{len .Activities}} activities</span>
+      <span class="total-count">Total: {{.ActivityCount}}</span>
     </div>
 
     {{if .Activities}}
@@ -60,12 +61,17 @@
     <div class="pagination">
       <span></span>
       <div class="pagination-controls">
+
         {{if gt .CurrentPage 1}}
         <a href="?page={{add .CurrentPage -1}}&limit={{.Limit}}" class="btn btn-secondary">Previous</a>
         {{else}}
         <button class="btn btn-secondary" disabled>Previous</button>
         {{end}}
 
+        {{if .ShowMin}}
+        <a href="?page=1&limit={{.Limit}}" class="page-info">1</a>
+        <span class="pagination-ellipsis">...</span>
+        {{end}}
         {{range $page := .PageList}}
         {{if eq $page $.CurrentPage}}
         <span class="page-info active">{{$page}}</span>
@@ -75,7 +81,8 @@
         {{end}}
 
         {{if .ShowMax}}
-        <span>...<a href="?page={{.TotalPages}}&limit={{.Limit}}" class="page-info">{{.TotalPages}}</a></span>
+        <span class="pagination-ellipsis">...</span>
+        <a href="?page={{.TotalPages}}&limit={{.Limit}}" class="page-info">{{.TotalPages}}</a>
         {{end}}
 
         {{if lt .CurrentPage .TotalPages}}
@@ -135,10 +142,18 @@
   }
 
   .activities-summary {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
     margin-bottom: 16px;
   }
 
   .activity-count {
+    font-size: 14px;
+    color: var(--text-secondary);
+  }
+
+  .total-count {
     font-size: 14px;
     color: var(--text-secondary);
   }
@@ -279,6 +294,12 @@
     display: flex;
     align-items: center;
     gap: 16px;
+  }
+
+  .pagination-ellipsis {
+    color: var(--text-secondary);
+    font-size: 14px;
+    letter-spacing: 2px;
   }
 
   .page-info {

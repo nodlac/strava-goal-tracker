@@ -1219,8 +1219,10 @@ func handleactivities(w http.ResponseWriter, r *http.Request) {
 		"TotalPages":    totalPages,
 		"CurrentPage":   currentPage,
 		"PageList":      pageList,
+		"ShowMin":       currentPage-3 > 1,
 		"ShowMax":       totalPages > currentPage+3,
 		"Limit":         limit,
+		"ActivityCount": activityCount,
 	})
 
 }
