@@ -1198,11 +1198,11 @@ func handleactivities(w http.ResponseWriter, r *http.Request) {
 	currentPage := pageNum
 
 	pageList := []int{}
-	start := currentPage - 3
+	start := currentPage - 2
 	if start < 1 {
 		start = 1
 	}
-	end := currentPage + 3
+	end := currentPage + 2
 	if end > totalPages {
 		end = totalPages
 	}
